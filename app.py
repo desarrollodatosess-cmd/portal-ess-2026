@@ -9,72 +9,72 @@ if "autenticado" not in st.session_state:
 if "menu_seleccionado" not in st.session_state:
     st.session_state.menu_seleccionado = "Inicio"
 
-# Inyección de estilos CSS Avanzados para emular un menú UI/UX Premium
+# Inyección de estilos CSS Ultra-Estrictos para forzar el diseño premium
 st.markdown(
     """
     <style>
-        /* Fondo e identidad visual de la barra lateral */
+        /* 1. Fondo e identidad visual estricta de la barra lateral */
         [data-testid="stSidebar"] {
             background-color: #050530 !important;
-            padding-top: 25px !important;
         }
         
-        /* === TÍTULO DEL MENÚ EN BLANCO SEMI-TRANSPARENTE === */
-        .menu-titulo {
-            color: rgba(255, 255, 255, 0.6) !important; /* Blanco al 60% de opacidad */
+        /* 2. FORZAR TÍTULO DEL MENÚ EN BLANCO TRANSPARENTOSO SOFISTICADO */
+        .menu-titulo-custom {
+            color: rgba(255, 255, 255, 0.45) !important; /* Blanco semi-transparente elegante */
             font-size: 0.85rem !important;
-            font-weight: 600 !important;
+            font-weight: 700 !important;
             text-transform: uppercase !important;
-            letter-spacing: 1.2px !important;
-            margin: 25px 0 12px 12px !important;
+            letter-spacing: 1.5px !important;
+            margin: 25px 0px 15px 5px !important;
+            display: block !important;
         }
         
-        /* Estilo base para los botones de navegación simulados */
-        div.stButton > button {
+        /* 3. FORZAR BOTÓN DE CERRAR SESIÓN NOTABLE Y SÓLIDO */
+        #contenedor-logout div.stButton > button {
+            background-color: #1E2950 !important; /* Fondo azul sólido destacado */
+            color: #FFFFFF !important;            /* Letra blanca nítida */
+            border: 1px solid rgba(255, 255, 255, 0.25) !important; /* Borde fino visible */
+            font-weight: 700 !important;          /* Texto en negrita notable */
+            font-size: 0.95rem !important;
+            width: 100% !important;
+            padding: 10px 15px !important;
+            border-radius: 8px !important;
+            text-align: center !important;
+            justify-content: center !important;
+            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.3) !important;
+            transition: all 0.2s ease-in-out !important;
+        }
+        
+        /* Hover del botón Cerrar Sesión */
+        #contenedor-logout div.stButton > button:hover {
+            background-color: #EF4444 !important; /* Cambio drástico a rojo */
+            color: #FFFFFF !important;
+            border-color: #EF4444 !important;
+        }
+        
+        /* 4. Estilo para los botones de navegación de las áreas */
+        #contenedor-menu div.stButton > button {
             width: 100% !important;
             background-color: transparent !important;
-            color: rgba(255, 255, 255, 0.8) !important;
+            color: rgba(255, 255, 255, 0.85) !important;
             border: none !important;
-            padding: 10px 15px !important;
+            padding: 10px 12px !important;
             text-align: left !important;
-            font-size: 1rem !important;
+            font-size: 0.98rem !important;
             font-weight: 500 !important;
-            border-radius: 8px !important;
-            margin-bottom: 5px !important;
-            transition: all 0.2s ease-in-out !important;
+            border-radius: 6px !important;
+            margin-bottom: 4px !important;
             display: flex !important;
             align-items: center !important;
+            transition: all 0.2s ease !important;
         }
         
-        /* Efecto Hover: Al pasar el cursor sobre una opción del menú */
-        div.stButton > button:hover {
+        #contenedor-menu div.stButton > button:hover {
             background-color: rgba(255, 255, 255, 0.08) !important;
             color: #FFFFFF !important;
         }
-        
-        /* === BOTÓN DE CERRAR SESIÓN ALTAMENTE NOTABLE Y LIMPIO === */
-        .boton-cerrar div.stButton > button {
-            background-color: #1E2950 !important; /* Fondo azul sólido más claro para resaltar */
-            color: #FFFFFF !important;            /* Texto blanco brillante */
-            border: 1px solid rgba(255, 255, 255, 0.2) !important; /* Borde fino elegante */
-            font-weight: 700 !important;          /* Letra gruesa notable */
-            font-size: 0.95rem !important;
-            border-radius: 8px !important;
-            margin-bottom: 20px !important;
-            text-align: center !important;
-            justify-content: center !important;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2) !important; /* Sombra sutil de elevación */
-        }
-        
-        /* Hover del botón Cerrar Sesión: Alerta en Rojo */
-        .boton-cerrar div.stButton > button:hover {
-            background-color: #EF4444 !important; /* Cambia a rojo intenso */
-            color: #FFFFFF !important;
-            border-color: #EF4444 !important;
-            box-shadow: 0px 4px 12px rgba(239, 68, 68, 0.3) !important;
-        }
 
-        /* Restaurar cajas del Login para que mantengan contraste nítido */
+        /* Mantener contraste nítido en el Login */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -109,18 +109,20 @@ if not st.session_state.autenticado:
 
 # Vista Principal del Portal (Autenticado)
 else:
-    # 1. Componente Superior: Cerrar Sesión estilizado y visible
-    st.sidebar.markdown('<div class="boton-cerrar">', unsafe_allow_html=True)
+    # Contenedor HTML con ID exclusivo para blindar el botón de Cerrar Sesión
+    st.sidebar.markdown('<div id="contenedor-logout">', unsafe_allow_html=True)
     if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
         st.session_state.autenticado = False
         st.session_state.menu_seleccionado = "Inicio"
         st.rerun()
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    # Título organizador del menú con el color blanco transparente aplicado
-    st.sidebar.markdown('<p class="menu-titulo">Módulos de Análisis</p>', unsafe_allow_html=True)
+    # Texto indicador con clase específica obligatoria
+    st.sidebar.markdown('<span class="menu-titulo-custom">Módulos de Análisis</span>', unsafe_allow_html=True)
 
-    # 2. Configuración del Menú de Navegación Vertical con Iconos Limpios
+    # Contenedor HTML con ID exclusivo para los botones de las áreas
+    st.sidebar.markdown('<div id="contenedor-menu">', unsafe_allow_html=True)
+    
     opciones_menu = {
         "Inicio": "🏠 Inicio",
         "Capital Humano": "👥 Capital Humano",
@@ -131,9 +133,7 @@ else:
         "Códigos de Falla": "⚠️ Códigos de Falla"
     }
 
-    # Renderizar cada opción como un botón de bloque UI elegante
     for clave, etiqueta in opciones_menu.items():
-        # Añadir indicador visual al elemento seleccionado de forma integrada
         if st.session_state.menu_seleccionado == clave:
             etiqueta_final = f"🔹 {etiqueta}"
         else:
@@ -142,6 +142,8 @@ else:
         if st.sidebar.button(etiqueta_final, key=f"menu_{clave}"):
             st.session_state.menu_seleccionado = clave
             st.rerun()
+            
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
     # 3. Despliegue de Contenidos Dinámicos en el Área Principal
     st.title("🚀 Portal de Business Intelligence - ESS")
