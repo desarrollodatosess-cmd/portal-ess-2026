@@ -9,7 +9,7 @@ if "autenticado" not in st.session_state:
 
 # Función para verificar credenciales
 def verificar_login(usuario, contrasena):
-    # Aquí puedes cambiar el usuario y contraseña por los que tú quieras
+    # Puedes cambiar estas credenciales cuando lo desees
     if usuario == "admin" and contrasena == "ess2026":
         st.session_state.autenticado = True
         st.success("¡Acceso concedido!")
@@ -31,31 +31,54 @@ if not st.session_state.autenticado:
 
 # Si el usuario SÍ está autenticado, entra al portal
 else:
-    # Botón para cerrar sesión en la esquina superior
+    # Botón para cerrar sesión en la barra lateral
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
 
     st.title("🚀 Portal de Business Intelligence - ESS")
-    st.write("Bienvenido al centro de mando de datos.")
+    st.write("Bienvenido al centro de mando de datos de la organización.")
+    st.markdown("---")
     
-    # Menú lateral para las áreas de la empresa
+    # Menú lateral con tus 6 áreas reales
     area = st.sidebar.selectbox(
         "Selecciona el área que deseas consultar:",
-        ["Inicio", "Ventas", "Finanzas", "Operaciones"]
+        [
+            "Inicio", 
+            "Capital Humano", 
+            "Comercial", 
+            "Liquidaciones", 
+            "Operaciones", 
+            "Flotilla", 
+            "Códigos de Falla"
+        ]
     )
     
     if area == "Inicio":
-        st.subheader("👋 Selecciona un área en el menú de la izquierda para ver los tableros.")
+        st.subheader("👋 Selecciona un área en el menú de la izquierda para desplegar los tableros analíticos.")
+        st.info("Nota: Para descargar datos específicos con lógica DAX, ubica el botón de descarga debajo del tablero correspondiente en cada sección.")
         
-    elif area == "Ventas":
-        st.subheader("📊 Tablero del Área de Ventas")
-        st.write("Aquí colocaremos el reporte de Power BI de Ventas en el siguiente paso.")
+    elif area == "Capital Humano":
+        st.subheader("👥 Indicadores de Capital Humano")
+        st.write("Aquí se incrustará el tablero de Capital Humano.")
+        # Espacio reservado para el Power BI y botón de descarga
         
-    elif area == "Finanzas":
-        st.subheader("💰 Tablero del Área de Finanzas")
-        st.write("Aquí colocaremos el reporte de Power BI de Finanzas en el siguiente paso.")
+    elif area == "Comercial":
+        st.subheader("💼 Tablero Comercial y Ventas")
+        st.write("Aquí se incrustará el tablero Comercial.")
+        
+    elif area == "Liquidaciones":
+        st.subheader("🧮 Módulo de Liquidaciones")
+        st.write("Aquí se incrustará el tablero de Liquidaciones.")
         
     elif area == "Operaciones":
-        st.subheader("⚙️ Tablero del Área de Operaciones")
-        st.write("Aquí colocaremos el reporte de Power BI de Operaciones en el siguiente paso.")
+        st.subheader("⚙️ Control de Operaciones")
+        st.write("Aquí se incrustará el tablero de Operaciones.")
+        
+    elif area == "Flotilla":
+        st.subheader("🚛 Gestión de Flotilla y Activos")
+        st.write("Aquí se incrustará el tablero de Flotilla.")
+        
+    elif area == "Códigos de Falla":
+        st.subheader("⚠️ Análisis de Códigos de Falla")
+        st.write("Aquí se incrustará el tablero de Códigos de Falla.")
