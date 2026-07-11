@@ -9,7 +9,6 @@ if "autenticado" not in st.session_state:
 
 # Función para verificar credenciales
 def verificar_login(usuario, contrasena):
-    # Puedes cambiar estas credenciales cuando lo desees
     if usuario == "admin" and contrasena == "ess2026":
         st.session_state.autenticado = True
         st.success("¡Acceso concedido!")
@@ -25,13 +24,11 @@ if not st.session_state.autenticado:
     with col1:
         usuario_ingresado = st.text_input("Usuario")
         contrasena_ingresada = st.text_input("Contraseña", type="password")
-        
         if st.button("Ingresar"):
             verificar_login(usuario_ingresado, contrasena_ingresada)
 
 # Si el usuario SÍ está autenticado, entra al portal
 else:
-    # Botón para cerrar sesión en la barra lateral
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
@@ -61,7 +58,6 @@ else:
     elif area == "Capital Humano":
         st.subheader("👥 Indicadores de Capital Humano")
         st.write("Aquí se incrustará el tablero de Capital Humano.")
-        # Espacio reservado para el Power BI y botón de descarga
         
     elif area == "Comercial":
         st.subheader("💼 Tablero Comercial y Ventas")
