@@ -3,7 +3,7 @@ import streamlit as st
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
 
-# Forzar diseño visual (Cajas blancas, barra azul marino y personalización de botones)
+# Forzar diseño visual (Cajas blancas, barra azul marino y menú vertical nítido)
 st.markdown(
     """
     <style>
@@ -12,25 +12,40 @@ st.markdown(
             background-color: #050530 !important;
         }
         
-        /* Texto dentro de la barra lateral */
+        /* Texto general dentro de la barra lateral */
         [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {
             color: #FFFFFF !important;
         }
         
-        /* === AQUÍ PERSONALIZAS EL BOTÓN DE CERRAR SESIÓN === */
+        /* === ESTILO PARA EL MENÚ DE SELECCIÓN VERTICAL (RADIO) === */
+        [data-testid="stSidebar"] [data-testid="stWidgetLabel"] p {
+            font-size: 1.1rem !important;
+            font-weight: bold !important;
+            color: #FFFFFF !important;
+            margin-bottom: 15px !important;
+        }
+        
+        /* Color de las opciones del menú vertical */
+        [data-testid="stSidebar"] [data-testid="stMarkdownContainer"] p {
+            color: #FFFFFF !important;
+            font-size: 1.05rem !important;
+        }
+        
+        /* Personalización del botón de Cerrar Sesión */
         [data-testid="stSidebar"] button {
-            background-color: #1E293B !important; /* Color de fondo del botón (azul grisáceo) */
-            color: #FFFFFF !important;            /* COLOR DE LA LETRA (Blanco brillante) */
-            border: 1px solid #384455 !important;  /* Borde del botón */
-            border-radius: 8px !important;         /* Bordes redondeados */
-            font-weight: bold !important;          /* Texto en negrita para mayor notoriedad */
+            background-color: #1E293B !important;
+            color: #FFFFFF !important;
+            border: 1px solid #384455 !important;
+            border-radius: 8px !important;
+            font-weight: bold !important;
+            margin-bottom: 25px !important;
+            width: 100% !important;
             transition: all 0.3s ease !important;
         }
         
-        /* Efecto cuando pasas el cursor sobre el botón */
         [data-testid="stSidebar"] button:hover {
-            background-color: #EF4444 !important; /* Cambia a rojo al pasar el mouse */
-            color: #FFFFFF !important;            /* La letra se mantiene blanca */
+            background-color: #EF4444 !important;
+            color: #FFFFFF !important;
             border-color: #EF4444 !important;
         }
 
@@ -41,7 +56,6 @@ st.markdown(
             border: 1px solid #CCCCCC !important;
         }
         
-        /* Títulos de las cajas de login */
         .stTextInput label {
             color: #1A1A1A !important;
         }
@@ -76,16 +90,13 @@ if not st.session_state.autenticado:
 
 # Si el usuario SÍ está autenticado, entra al portal
 else:
+    # Botón de cerrar sesión al inicio de la barra lateral
     if st.sidebar.button("🚪 Cerrar Sesión"):
         st.session_state.autenticado = False
         st.rerun()
 
-    st.title("🚀 Portal de Business Intelligence - ESS")
-    st.write("Bienvenido al centro de mando de datos de la organización.")
-    st.markdown("---")
-    
-    # Menú lateral con tus 6 áreas reales
-    area = st.sidebar.selectbox(
+    # CAMBIO AQUÍ: Usamos st.sidebar.radio para mostrar la lista de opciones abierta
+    area = st.sidebar.radio(
         "Selecciona el área que deseas consultar:",
         [
             "Inicio", 
@@ -97,6 +108,10 @@ else:
             "Códigos de Falla"
         ]
     )
+
+    st.title("🚀 Portal de Business Intelligence - ESS")
+    st.write("Bienvenido al centro de mando de datos de la organización.")
+    st.markdown("---")
     
     if area == "Inicio":
         st.subheader("👋 Selecciona un área en el menú de la izquierda para desplegar los tableros analíticos.")
