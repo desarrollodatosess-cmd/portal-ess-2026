@@ -478,7 +478,7 @@ else:
         st.markdown("</div>", unsafe_allow_html=True)
 
     # === Área Principal de Contenidos ===
-    st.title("🚀 Portal de Business Intelligence - ESS")
+    st.title("Express San Silvestre")
     st.markdown(
         '<p class="subtitulo-portal">Bienvenido al centro de mando de datos de la organización.</p>',
         unsafe_allow_html=True,
