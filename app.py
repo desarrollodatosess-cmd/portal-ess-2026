@@ -9,33 +9,30 @@ if "autenticado" not in st.session_state:
 if "menu_seleccionado" not in st.session_state:
     st.session_state.menu_seleccionado = "Inicio"
 
-# Inyección de estilos CSS Ultra-Estrictos para forzar el diseño premium
+# Inyección de estilos CSS Ultra-Estrictos para corregir el contraste del texto
 st.markdown(
     """
     <style>
-        /* 1. Fondo e identidad visual estricta de la barra lateral */
+        /* Fondo principal de la barra lateral */
         [data-testid="stSidebar"] {
             background-color: #050530 !important;
         }
         
-        /* 2. FORZAR TÍTULO DEL MENÚ EN BLANCO TRANSPARENTOSO SOFISTICADO */
+        /* === TÍTULO MÓDULOS DE ANÁLISIS: BLANCO TRANSPARENTOSO SOFISTICADO === */
         .menu-titulo-custom {
-            color: rgba(255, 255, 255, 0.45) !important; /* Blanco semi-transparente elegante */
-            font-size: 0.85rem !important;
+            color: rgba(255, 255, 255, 0.55) !important; /* Blanco al 55% de opacidad */
+            font-size: 0.82rem !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
             letter-spacing: 1.5px !important;
-            margin: 25px 0px 15px 5px !important;
+            margin: 20px 0px 15px 12px !important;
             display: block !important;
         }
         
-        /* 3. FORZAR BOTÓN DE CERRAR SESIÓN NOTABLE Y SÓLIDO */
+        /* === BOTÓN DE CERRAR SESIÓN: DISEÑO SÓLIDO Y DESTACADO === */
         #contenedor-logout div.stButton > button {
-            background-color: #1E2950 !important; /* Fondo azul sólido destacado */
-            color: #FFFFFF !important;            /* Letra blanca nítida */
-            border: 1px solid rgba(255, 255, 255, 0.25) !important; /* Borde fino visible */
-            font-weight: 700 !important;          /* Texto en negrita notable */
-            font-size: 0.95rem !important;
+            background-color: #1E2950 !important; /* Fondo azul más claro */
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
             width: 100% !important;
             padding: 10px 15px !important;
             border-radius: 8px !important;
@@ -45,23 +42,27 @@ st.markdown(
             transition: all 0.2s ease-in-out !important;
         }
         
-        /* Hover del botón Cerrar Sesión */
-        #contenedor-logout div.stButton > button:hover {
-            background-color: #EF4444 !important; /* Cambio drástico a rojo */
+        /* Forzar texto blanco en Cerrar Sesión */
+        #contenedor-logout div.stButton > button p,
+        #contenedor-logout div.stButton > button span {
             color: #FFFFFF !important;
-            border-color: #EF4444 !important;
+            font-weight: 700 !important;
+            font-size: 0.95rem !important;
         }
         
-        /* 4. Estilo para los botones de navegación de las áreas */
+        /* Hover del botón Cerrar Sesión (Cambio a Alerta) */
+        #contenedor-logout div.stButton > button:hover {
+            background-color: #EF4444 !important;
+            border-color: #EF4444 !important;
+        }
+
+        /* === BOTONES DEL MENÚ DE ÁREAS: TEXTO BLANCO LIMPIO Y VISIBLE === */
         #contenedor-menu div.stButton > button {
             width: 100% !important;
             background-color: transparent !important;
-            color: rgba(255, 255, 255, 0.85) !important;
             border: none !important;
             padding: 10px 12px !important;
             text-align: left !important;
-            font-size: 0.98rem !important;
-            font-weight: 500 !important;
             border-radius: 6px !important;
             margin-bottom: 4px !important;
             display: flex !important;
@@ -69,12 +70,24 @@ st.markdown(
             transition: all 0.2s ease !important;
         }
         
+        /* FORZAR COLOR BLANCO EN EL TEXTO DE LOS BOTONES NATIVOS */
+        #contenedor-menu div.stButton > button p,
+        #contenedor-menu div.stButton > button span {
+            color: rgba(255, 255, 255, 0.9) !important; /* Blanco brillante de alta visibilidad */
+            font-size: 0.98rem !important;
+            font-weight: 500 !important;
+        }
+        
+        /* Efecto Hover elegante para las opciones */
         #contenedor-menu div.stButton > button:hover {
             background-color: rgba(255, 255, 255, 0.08) !important;
+        }
+        #contenedor-menu div.stButton > button:hover p,
+        #contenedor-menu div.stButton > button:hover span {
             color: #FFFFFF !important;
         }
 
-        /* Mantener contraste nítido en el Login */
+        /* Mantener las cajas de Login legibles */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -109,7 +122,7 @@ if not st.session_state.autenticado:
 
 # Vista Principal del Portal (Autenticado)
 else:
-    # Contenedor HTML con ID exclusivo para blindar el botón de Cerrar Sesión
+    # Botón superior de Cerrar Sesión
     st.sidebar.markdown('<div id="contenedor-logout">', unsafe_allow_html=True)
     if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
         st.session_state.autenticado = False
@@ -117,10 +130,10 @@ else:
         st.rerun()
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    # Texto indicador con clase específica obligatoria
+    # Título del menú con la opacidad corregida
     st.sidebar.markdown('<span class="menu-titulo-custom">Módulos de Análisis</span>', unsafe_allow_html=True)
 
-    # Contenedor HTML con ID exclusivo para los botones de las áreas
+    # Bloque de navegación principal
     st.sidebar.markdown('<div id="contenedor-menu">', unsafe_allow_html=True)
     
     opciones_menu = {
