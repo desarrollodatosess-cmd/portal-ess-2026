@@ -9,85 +9,71 @@ if "autenticado" not in st.session_state:
 if "menu_seleccionado" not in st.session_state:
     st.session_state.menu_seleccionado = "Inicio"
 
-# Inyección de estilos CSS Ultra-Estrictos para corregir el contraste del texto
+# Inyección de estilos CSS Ultra-Estrictos y Globales para la Barra Lateral
 st.markdown(
     """
     <style>
-        /* Fondo principal de la barra lateral */
+        /* 1. Fondo principal continuo de la barra lateral */
         [data-testid="stSidebar"] {
             background-color: #050530 !important;
         }
         
-        /* === TÍTULO MÓDULOS DE ANÁLISIS: BLANCO TRANSPARENTOSO SOFISTICADO === */
+        /* 2. Forzar que TODO contenedor de botón dentro de la barra lateral sea transparente */
+        [data-testid="stSidebar"] button {
+            background-color: transparent !important;
+            border: none !important;
+            color: #FFFFFF !important;
+            width: 100% !important;
+            text-align: left !important;
+            padding: 12px 15px !important;
+            border-radius: 8px !important;
+            margin-bottom: 5px !important;
+            transition: all 0.3s ease !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+        }
+        
+        /* 3. Forzar el texto e iconos internos de TODOS los botones en blanco */
+        [data-testid="stSidebar"] button p,
+        [data-testid="stSidebar"] button span,
+        [data-testid="stSidebar"] button div {
+            color: #FFFFFF !important;
+            font-size: 1rem !important;
+            font-weight: 500 !important;
+        }
+
+        /* 4. Efecto Hover estilo "Eden" (Fondo sutil claro al pasar el cursor) */
+        [data-testid="stSidebar"] button:hover {
+            background-color: rgba(255, 255, 255, 0.1) !important;
+        }
+
+        /* 5. TÍTULO SECCIÓN: Blanco semi-transparente elegante */
         .menu-titulo-custom {
-            color: rgba(255, 255, 255, 0.55) !important; /* Blanco al 55% de opacidad */
-            font-size: 0.82rem !important;
+            color: rgba(255, 255, 255, 0.4) !important;
+            font-size: 0.8rem !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
             letter-spacing: 1.5px !important;
-            margin: 20px 0px 15px 12px !important;
+            margin: 25px 0 10px 15px !important;
             display: block !important;
         }
         
-        /* === BOTÓN DE CERRAR SESIÓN: DISEÑO SÓLIDO Y DESTACADO === */
-        #contenedor-logout div.stButton > button {
-            background-color: #1E2950 !important; /* Fondo azul más claro */
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
-            width: 100% !important;
-            padding: 10px 15px !important;
-            border-radius: 8px !important;
-            text-align: center !important;
-            justify-content: center !important;
-            box-shadow: 0px 4px 8px rgba(0, 0, 0, 0.3) !important;
-            transition: all 0.2s ease-in-out !important;
+        /* 6. BOTÓN EXCLUSIVO CERRAR SESIÓN (Ubicado en la parte superior) */
+        .btn-logout-box button {
+            background-color: #1E2950 !important;
+            border: 1px solid rgba(255, 255, 255, 0.15) !important;
+            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2) !important;
         }
-        
-        /* Forzar texto blanco en Cerrar Sesión */
-        #contenedor-logout div.stButton > button p,
-        #contenedor-logout div.stButton > button span {
-            color: #FFFFFF !important;
+        .btn-logout-box button p {
             font-weight: 700 !important;
-            font-size: 0.95rem !important;
         }
-        
-        /* Hover del botón Cerrar Sesión (Cambio a Alerta) */
-        #contenedor-logout div.stButton > button:hover {
-            background-color: #EF4444 !important;
+        .btn-logout-box button:hover {
+            background-color: #EF4444 !important; /* Rojo de alerta al hacer hover */
             border-color: #EF4444 !important;
         }
 
-        /* === BOTONES DEL MENÚ DE ÁREAS: TEXTO BLANCO LIMPIO Y VISIBLE === */
-        #contenedor-menu div.stButton > button {
-            width: 100% !important;
-            background-color: transparent !important;
-            border: none !important;
-            padding: 10px 12px !important;
-            text-align: left !important;
-            border-radius: 6px !important;
-            margin-bottom: 4px !important;
-            display: flex !important;
-            align-items: center !important;
-            transition: all 0.2s ease !important;
-        }
-        
-        /* FORZAR COLOR BLANCO EN EL TEXTO DE LOS BOTONES NATIVOS */
-        #contenedor-menu div.stButton > button p,
-        #contenedor-menu div.stButton > button span {
-            color: rgba(255, 255, 255, 0.9) !important; /* Blanco brillante de alta visibilidad */
-            font-size: 0.98rem !important;
-            font-weight: 500 !important;
-        }
-        
-        /* Efecto Hover elegante para las opciones */
-        #contenedor-menu div.stButton > button:hover {
-            background-color: rgba(255, 255, 255, 0.08) !important;
-        }
-        #contenedor-menu div.stButton > button:hover p,
-        #contenedor-menu div.stButton > button:hover span {
-            color: #FFFFFF !important;
-        }
-
-        /* Mantener las cajas de Login legibles */
+        /* Control de contraste para las cajas del Login */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -122,20 +108,18 @@ if not st.session_state.autenticado:
 
 # Vista Principal del Portal (Autenticado)
 else:
-    # Botón superior de Cerrar Sesión
-    st.sidebar.markdown('<div id="contenedor-logout">', unsafe_allow_html=True)
+    # Contenedor especial para el botón de Cerrar Sesión superior
+    st.sidebar.markdown('<div class="btn-logout-box">', unsafe_allow_html=True)
     if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
         st.session_state.autenticado = False
         st.session_state.menu_seleccionado = "Inicio"
         st.rerun()
     st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    # Título del menú con la opacidad corregida
+    # Encabezado del Menú en la barra lateral
     st.sidebar.markdown('<span class="menu-titulo-custom">Módulos de Análisis</span>', unsafe_allow_html=True)
 
-    # Bloque de navegación principal
-    st.sidebar.markdown('<div id="contenedor-menu">', unsafe_allow_html=True)
-    
+    # Diccionario con las opciones limpias y sus respectivos iconos
     opciones_menu = {
         "Inicio": "🏠 Inicio",
         "Capital Humano": "👥 Capital Humano",
@@ -146,7 +130,9 @@ else:
         "Códigos de Falla": "⚠️ Códigos de Falla"
     }
 
+    # Renderizado y detección del estado activo del menú
     for clave, etiqueta in opciones_menu.items():
+        # Si está seleccionado, le agregamos un indicador visual y estilo limpio
         if st.session_state.menu_seleccionado == clave:
             etiqueta_final = f"🔹 {etiqueta}"
         else:
@@ -155,10 +141,8 @@ else:
         if st.sidebar.button(etiqueta_final, key=f"menu_{clave}"):
             st.session_state.menu_seleccionado = clave
             st.rerun()
-            
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
-    # 3. Despliegue de Contenidos Dinámicos en el Área Principal
+    # --- Área Principal de Contenidos ---
     st.title("🚀 Portal de Business Intelligence - ESS")
     st.write("Bienvenido al centro de mando de datos de la organización.")
     st.markdown("---")
