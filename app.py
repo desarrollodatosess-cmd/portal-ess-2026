@@ -3,6 +3,33 @@ import streamlit as st
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
 
+# Forzar diseño visual (Cajas blancas, texto visible y barra lateral azul marino)
+st.markdown(
+    """
+    <style>
+        /* Fondo de la barra lateral */
+        [data-testid="stSidebar"] {
+            background-color: #050530 !important;
+        }
+        /* Texto dentro de la barra lateral */
+        [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {
+            color: #FFFFFF !important;
+        }
+        /* Estilo para las cajas de entrada de texto (Login) */
+        .stTextInput input {
+            background-color: #FFFFFF !important;
+            color: #1A1A1A !important;
+            border: 1px solid #CCCCCC !important;
+        }
+        /* Títulos de las cajas de login */
+        .stTextInput label {
+            color: #1A1A1A !important;
+        }
+    </style>
+    """,
+    unsafe_allow_html=True
+)
+
 # Inicializar el estado de la sesión para el login si no existe
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
