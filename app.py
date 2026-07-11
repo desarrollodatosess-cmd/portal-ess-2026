@@ -9,7 +9,7 @@ if "autenticado" not in st.session_state:
 if "menu_seleccionado" not in st.session_state:
     st.session_state.menu_seleccionado = "Inicio"
 
-# Inyección de estilos CSS Ultra-Estrictos y Globales para la Barra Lateral
+# === INYECCIÓN CSS ULTRA-ESTRICTA Y GLOBAL ===
 st.markdown(
     """
     <style>
@@ -18,7 +18,7 @@ st.markdown(
             background-color: #050530 !important;
         }
         
-        /* 2. Forzar que TODO contenedor de botón dentro de la barra lateral sea transparente */
+        /* 2. Estilo base transparente para los botones del menú de módulos */
         [data-testid="stSidebar"] button {
             background-color: transparent !important;
             border: none !important;
@@ -34,7 +34,7 @@ st.markdown(
             justify-content: flex-start !important;
         }
         
-        /* 3. Forzar el texto e iconos internos de TODOS los botones en blanco */
+        /* Forzar que el texto de los botones del menú sea blanco e impecable */
         [data-testid="stSidebar"] button p,
         [data-testid="stSidebar"] button span,
         [data-testid="stSidebar"] button div {
@@ -43,12 +43,12 @@ st.markdown(
             font-weight: 500 !important;
         }
 
-        /* 4. Efecto Hover estilo "Eden" (Fondo sutil claro al pasar el cursor) */
+        /* Efecto Hover estilo "Eden" para los módulos */
         [data-testid="stSidebar"] button:hover {
             background-color: rgba(255, 255, 255, 0.1) !important;
         }
 
-        /* 5. TÍTULO SECCIÓN: Blanco semi-transparente elegante */
+        /* 3. TÍTULO SECCIÓN: Blanco sutil con opacidad */
         .menu-titulo-custom {
             color: rgba(255, 255, 255, 0.4) !important;
             font-size: 0.8rem !important;
@@ -59,21 +59,40 @@ st.markdown(
             display: block !important;
         }
         
-        /* 6. BOTÓN EXCLUSIVO CERRAR SESIÓN (Ubicado en la parte superior) */
+        /* 4. CONTENEDOR FLEX PARA MANDAR EL LOGOUT AL FONDO */
+        .sidebar-bottom-container {
+            margin-top: auto !important;
+            padding-top: 20px !important;
+            width: 100% !important;
+        }
+        
+        /* DISEÑO PREMIUM DEL BOTÓN DE CERRAR SESIÓN */
         .btn-logout-box button {
-            background-color: #1E2950 !important;
-            border: 1px solid rgba(255, 255, 255, 0.15) !important;
-            box-shadow: 0px 4px 10px rgba(0, 0, 0, 0.2) !important;
-        }
-        .btn-logout-box button p {
-            font-weight: 700 !important;
-        }
-        .btn-logout-box button:hover {
-            background-color: #EF4444 !important; /* Rojo de alerta al hacer hover */
-            border-color: #EF4444 !important;
+            background-color: rgba(255, 255, 255, 0.08) !important;
+            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+            box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3) !important;
+            width: 100% !important;
+            padding: 10px 15px !important;
+            border-radius: 8px !important;
+            transition: all 0.3s ease !important;
         }
 
-        /* Control de contraste para las cajas del Login */
+        /* Forzar explícitamente el TEXTO BLANCO en Cerrar Sesión */
+        .btn-logout-box button p, 
+        .btn-logout-box button span, 
+        .btn-logout-box button div {
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            font-size: 0.95rem !important;
+        }
+
+        /* Hover dinámico: Alerta roja elegante */
+        .btn-logout-box button:hover {
+            background-color: #D32F2F !important;
+            border-color: #D32F2F !important;
+        }
+
+        /* 5. Mantener cajas de texto e inputs de Login legibles */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -96,7 +115,7 @@ def verificar_login(usuario, contrasena):
     else:
         st.error("Usuario o contraseña incorrectos")
 
-# Vista de Control de Acceso
+# Vista de Control de Acceso (Login)
 if not st.session_state.autenticado:
     st.title("🔒 Control de Acceso - Portal ESS")
     col1, col2 = st.columns([1, 2])
@@ -108,18 +127,10 @@ if not st.session_state.autenticado:
 
 # Vista Principal del Portal (Autenticado)
 else:
-    # Contenedor especial para el botón de Cerrar Sesión superior
-    st.sidebar.markdown('<div class="btn-logout-box">', unsafe_allow_html=True)
-    if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
-        st.session_state.autenticado = False
-        st.session_state.menu_seleccionado = "Inicio"
-        st.rerun()
-    st.sidebar.markdown('</div>', unsafe_allow_html=True)
-
     # Encabezado del Menú en la barra lateral
     st.sidebar.markdown('<span class="menu-titulo-custom">Módulos de Análisis</span>', unsafe_allow_html=True)
 
-    # Diccionario con las opciones limpias y sus respectivos iconos
+    # Diccionario de módulos
     opciones_menu = {
         "Inicio": "🏠 Inicio",
         "Capital Humano": "👥 Capital Humano",
@@ -130,9 +141,8 @@ else:
         "Códigos de Falla": "⚠️ Códigos de Falla"
     }
 
-    # Renderizado y detección del estado activo del menú
+    # Renderizado y detección de los botones del menú
     for clave, etiqueta in opciones_menu.items():
-        # Si está seleccionado, le agregamos un indicador visual y estilo limpio
         if st.session_state.menu_seleccionado == clave:
             etiqueta_final = f"🔹 {etiqueta}"
         else:
@@ -142,7 +152,16 @@ else:
             st.session_state.menu_seleccionado = clave
             st.rerun()
 
-    # --- Área Principal de Contenidos ---
+    # CONTENEDOR DINÁMICO AL FONDO: Coloca y formatea Cerrar Sesión abajo de todo
+    with st.sidebar.container():
+        st.sidebar.markdown('<div class="sidebar-bottom-container btn-logout-box">', unsafe_allow_html=True)
+        if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
+            st.session_state.autenticado = False
+            st.session_state.menu_seleccionado = "Inicio"
+            st.rerun()
+        st.sidebar.markdown('</div>', unsafe_allow_html=True)
+
+    # === Área Principal de Contenidos ===
     st.title("🚀 Portal de Business Intelligence - ESS")
     st.write("Bienvenido al centro de mando de datos de la organización.")
     st.markdown("---")
