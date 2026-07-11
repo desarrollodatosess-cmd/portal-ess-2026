@@ -3,7 +3,7 @@ import streamlit as st
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
 
-# Forzar diseño visual (Cajas blancas, texto visible y barra lateral azul marino)
+# Forzar diseño visual (Cajas blancas, barra azul marino y personalización de botones)
 st.markdown(
     """
     <style>
@@ -11,16 +11,36 @@ st.markdown(
         [data-testid="stSidebar"] {
             background-color: #050530 !important;
         }
+        
         /* Texto dentro de la barra lateral */
         [data-testid="stSidebar"] .stMarkdown, [data-testid="stSidebar"] label {
             color: #FFFFFF !important;
         }
+        
+        /* === AQUÍ PERSONALIZAS EL BOTÓN DE CERRAR SESIÓN === */
+        [data-testid="stSidebar"] button {
+            background-color: #1E293B !important; /* Color de fondo del botón (azul grisáceo) */
+            color: #FFFFFF !important;            /* COLOR DE LA LETRA (Blanco brillante) */
+            border: 1px solid #384455 !important;  /* Borde del botón */
+            border-radius: 8px !important;         /* Bordes redondeados */
+            font-weight: bold !important;          /* Texto en negrita para mayor notoriedad */
+            transition: all 0.3s ease !important;
+        }
+        
+        /* Efecto cuando pasas el cursor sobre el botón */
+        [data-testid="stSidebar"] button:hover {
+            background-color: #EF4444 !important; /* Cambia a rojo al pasar el mouse */
+            color: #FFFFFF !important;            /* La letra se mantiene blanca */
+            border-color: #EF4444 !important;
+        }
+
         /* Estilo para las cajas de entrada de texto (Login) */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
             border: 1px solid #CCCCCC !important;
         }
+        
         /* Títulos de las cajas de login */
         .stTextInput label {
             color: #1A1A1A !important;
