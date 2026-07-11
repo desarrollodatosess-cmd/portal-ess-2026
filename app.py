@@ -18,81 +18,97 @@ st.markdown(
             background-color: #050530 !important;
         }
         
-        /* 2. Estilo base transparente para los botones del menú de módulos */
+        /* 2. Reducir el espacio general del contenedor interno de Streamlit */
+        [data-testid="stSidebarContent"] {
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100vh !important;
+            justify-content: flex-start !important;
+            padding-bottom: 80px !important; /* Espacio para que no tape el botón del fondo */
+        }
+        
+        /* 3. Estilo base transparente y MENOS DISTANCIA para los botones de módulos */
         [data-testid="stSidebar"] button {
             background-color: transparent !important;
             border: none !important;
             color: #FFFFFF !important;
             width: 100% !important;
             text-align: left !important;
-            padding: 12px 15px !important;
+            padding: 6px 12px !important; /* Reducido de 12px a 6px para menor distancia */
             border-radius: 8px !important;
-            margin-bottom: 5px !important;
+            margin-bottom: 2px !important; /* Distancia mínima entre botones */
             transition: all 0.3s ease !important;
             display: flex !important;
             align-items: center !important;
             justify-content: flex-start !important;
         }
         
-        /* Forzar que el texto de los botones del menú sea blanco e impecable */
+        /* Forzar texto blanco en botones normales */
         [data-testid="stSidebar"] button p,
         [data-testid="stSidebar"] button span,
         [data-testid="stSidebar"] button div {
             color: #FFFFFF !important;
-            font-size: 1rem !important;
+            font-size: 0.95rem !important;
             font-weight: 500 !important;
         }
 
-        /* Efecto Hover estilo "Eden" para los módulos */
+        /* Hover estilo "Eden" para los módulos */
         [data-testid="stSidebar"] button:hover {
-            background-color: rgba(255, 255, 255, 0.1) !important;
+            background-color: rgba(255, 255, 255, 0.08) !important;
         }
 
-        /* 3. TÍTULO SECCIÓN: Blanco sutil con opacidad */
+        /* TÍTULO SECCIÓN */
         .menu-titulo-custom {
             color: rgba(255, 255, 255, 0.4) !important;
             font-size: 0.8rem !important;
             font-weight: 700 !important;
             text-transform: uppercase !important;
             letter-spacing: 1.5px !important;
-            margin: 25px 0 10px 15px !important;
+            margin: 15px 0 8px 12px !important;
             display: block !important;
         }
         
-        /* 4. CONTENEDOR FLEX PARA MANDAR EL LOGOUT AL FONDO */
+        /* 4. POSICIONAMIENTO DEL BOTÓN AL PIE DE LA BARRA LATERAL */
         .sidebar-bottom-container {
-            margin-top: auto !important;
-            padding-top: 20px !important;
+            position: absolute !important;
+            bottom: 20px !important;
+            left: 0 !important;
             width: 100% !important;
+            padding: 0 16px !important;
+            box-sizing: border-box !important;
+            background-color: #050530 !important;
+            z-index: 999 !important;
         }
         
-        /* DISEÑO PREMIUM DEL BOTÓN DE CERRAR SESIÓN */
-        .btn-logout-box button {
-            background-color: rgba(255, 255, 255, 0.08) !important;
-            border: 1px solid rgba(255, 255, 255, 0.2) !important;
+        /* DISEÑO FIJO DEL BOTÓN DE CERRAR SESIÓN (Caja premium de image_303a9b) */
+        .sidebar-bottom-container button {
+            background-color: rgba(255, 255, 255, 0.12) !important; /* Fondo gris/azul sutil */
+            border: 1px solid rgba(255, 255, 255, 0.2) !important; /* Borde visible */
             box-shadow: 0px 4px 12px rgba(0, 0, 0, 0.3) !important;
             width: 100% !important;
             padding: 10px 15px !important;
             border-radius: 8px !important;
-            transition: all 0.3s ease !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
         }
 
-        /* Forzar explícitamente el TEXTO BLANCO en Cerrar Sesión */
-        .btn-logout-box button p, 
-        .btn-logout-box button span, 
-        .btn-logout-box button div {
+        /* TEXTO BLANCO EXCLUSIVO para Cerrar Sesión */
+        .sidebar-bottom-container button p, 
+        .sidebar-bottom-container button span, 
+        .sidebar-bottom-container button div {
             color: #FFFFFF !important;
             font-weight: 600 !important;
             font-size: 0.95rem !important;
         }
 
-        /* Hover dinámico: Alerta roja elegante */
-        .btn-logout-box button:hover {
+        /* Hover dinámico para Cerrar Sesión */
+        .sidebar-bottom-container button:hover {
             background-color: #D32F2F !important;
             border-color: #D32F2F !important;
         }
 
-        /* 5. Mantener cajas de texto e inputs de Login legibles */
+        /* Mantener cajas de Login legibles */
         .stTextInput input {
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -141,7 +157,7 @@ else:
         "Códigos de Falla": "⚠️ Códigos de Falla"
     }
 
-    # Renderizado y detección de los botones del menú
+    # Renderizado de los botones del menú (con menor distancia por CSS)
     for clave, etiqueta in opciones_menu.items():
         if st.session_state.menu_seleccionado == clave:
             etiqueta_final = f"🔹 {etiqueta}"
@@ -152,14 +168,13 @@ else:
             st.session_state.menu_seleccionado = clave
             st.rerun()
 
-    # CONTENEDOR DINÁMICO AL FONDO: Coloca y formatea Cerrar Sesión abajo de todo
-    with st.sidebar.container():
-        st.sidebar.markdown('<div class="sidebar-bottom-container btn-logout-box">', unsafe_allow_html=True)
-        if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
-            st.session_state.autenticado = False
-            st.session_state.menu_seleccionado = "Inicio"
-            st.rerun()
-        st.sidebar.markdown('</div>', unsafe_allow_html=True)
+    # EL BOTÓN DE CERRAR SESIÓN SE ANCLA AL PIE DE LA BARRA LATERAL
+    st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
+    if st.sidebar.button("🚪 Cerrar Sesión", key="btn_logout"):
+        st.session_state.autenticado = False
+        st.session_state.menu_seleccionado = "Inicio"
+        st.rerun()
+    st.sidebar.markdown('</div>', unsafe_allow_html=True)
 
     # === Área Principal de Contenidos ===
     st.title("🚀 Portal de Business Intelligence - ESS")
