@@ -30,6 +30,22 @@ st.markdown(
             background-color: #0E0E3A !important;
         }}
 
+        /* 1.b Flecha de colapsar/expandir barra lateral: hacerla notoria */
+        [data-testid="stSidebarCollapseButton"] button {{
+            background-color: rgba(255, 255, 255, 0.10) !important;
+            border-radius: 8px !important;
+            opacity: 1 !important;
+        }}
+        [data-testid="stSidebarCollapseButton"] svg {{
+            fill: #FFFFFF !important;
+            opacity: 1 !important;
+            width: 22px !important;
+            height: 22px !important;
+        }}
+        [data-testid="stSidebarCollapseButton"] button:hover {{
+            background-color: rgba(255, 255, 255, 0.2) !important;
+        }}
+
         /* 2. Layout general: menú arriba, logout pegado abajo */
         [data-testid="stSidebarContent"] {{
             display: flex !important;
@@ -91,15 +107,34 @@ st.markdown(
             box-shadow: 0px 4px 10px rgba(75, 79, 232, 0.35) !important;
         }}
 
-        /* Separador antes de Cerrar Sesión */
+        /* Separador antes del bloque inferior */
         .sidebar-divider {{
             border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
-            margin: 8px 14px 10px 14px !important;
+            margin: 8px 14px 6px 14px !important;
         }}
 
-        /* Empuja el bloque de logout al fondo de la barra lateral */
+        /* Leyenda debajo de la línea */
+        .sidebar-leyenda {{
+            color: rgba(255, 255, 255, 0.30) !important;
+            font-size: 0.7rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px !important;
+            text-align: center !important;
+            margin: 0 0 4px 0 !important;
+            display: block !important;
+        }}
+
+        /* Empuja todo el bloque inferior (línea + leyenda + logout) al fondo,
+           y separa el logout de la leyenda con un espacio flexible */
         .sidebar-bottom-container {{
             margin-top: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }}
+
+        .sidebar-bottom-spacer {{
+            flex-grow: 1 !important;
+            min-height: 24px !important;
         }}
 
         .sidebar-bottom-container [data-testid="stButton"] button:hover {{
@@ -174,6 +209,11 @@ else:
     with st.sidebar:
         st.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
         st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<span class="sidebar-leyenda">Desarrollo De Datos</span>',
+            unsafe_allow_html=True,
+        )
+        st.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
         if st.button("🚪  Cerrar Sesión", key="btn_logout"):
             st.session_state.autenticado = False
             st.session_state.menu_seleccionado = "Inicio"
