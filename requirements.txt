@@ -1,3 +1,5 @@
 streamlit
 pandas
 openpyxl
+pyodbc
+sqlalchemy>=2.0.36
