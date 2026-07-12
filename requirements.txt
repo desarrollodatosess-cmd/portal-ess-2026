@@ -1,1 +1,4 @@
-pymssql
+streamlit
+pandas
+pyodbc
+sqlalchemy>=2.0.36
