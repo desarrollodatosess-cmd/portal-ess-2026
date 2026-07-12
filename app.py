@@ -1,7 +1,9 @@
 import base64
+import io  # <-- NUEVO: Para crear el Excel en memoria
 import re
 from pathlib import Path
 
+import pandas as pd  # <-- NUEVO: Para procesar los datos
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -18,14 +20,54 @@ if "menu_seleccionado" not in st.session_state:
 def slugify(texto: str) -> str:
     """Convierte 'Capital Humano' -> 'capital_humano' para usarlo como key/clase CSS."""
     texto = texto.lower()
-    for a, b in {"á": "a", "é": "e", "í": "i", "ó": "o", "ú": "u", "ñ": "n"}.items():
+    for a, b in {
+        "á": "a",
+        "é": "e",
+        "í": "i",
+        "ó": "o",
+        "ú": "u",
+        "ñ": "n",
+    }.items():
         texto = texto.replace(a, b)
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
+# === NUEVA FUNCIÓN: CONEXIÓN A TU BASE DE DATOS SQL ===
+def obtener_datos_liquidaciones_sql():
+    """Conecta a la base de datos SQL de Express San Silvestre y extrae la tabla de liquidaciones."""
+    # REEMPLAZA ESTAS CREDENCIALES CON LAS REALES DE TU SERVIDOR
+    servidor = "TU_SERVIDOR_SQL"
+    base_datos = "TU_BASE_DATOS"
+    usuario = "TU_USUARIO"
+    contrasena = "TU_CONTRASEÑA"
+
+    cadena_conexion = (
+        f"DRIVER={{SQL Server}};"
+        f"SERVER={servidor};"
+        f"DATABASE={base_datos};"
+        f"UID={usuario};"
+        f"PWD={contrasena}"
+    )
+
+    # Coloca el query exacto que extrae las columnas que necesitas en tu Excel
+    query = """
+        SELECT 
+            Folio, 
+            Unidad, 
+            Nombre, 
+            Gastos_Extras, 
+            Total_Gastos, 
+            CreadoEl, 
+            Creo 
+        FROM TuTablaLiquidaciones
+    """
+
+    # Pandas ejecuta la consulta SQL y crea el DataFrame automáticamente
+    df = pd.read_sql(query, cadena_conexion)
+    return df
+
+
 # === CONFIGURACIÓN DEL CARRUSEL DE INICIO ===
-# Coloca aquí las fotos de la empresa (banners, instalaciones, equipo, etc.)
-# Formatos admitidos: .jpg .jpeg .png .webp
 RUTA_CARRUSEL = "assets/carousel"
 
 
@@ -44,7 +86,9 @@ def obtener_imagenes_carrusel(carpeta: str) -> list:
     if not carpeta_path.exists():
         return []
     extensiones_validas = {".jpg", ".jpeg", ".png", ".webp"}
-    archivos = sorted(p for p in carpeta_path.iterdir() if p.suffix.lower() in extensiones_validas)
+    archivos = sorted(
+        p for p in carpeta_path.iterdir() if p.suffix.lower() in extensiones_validas
+    )
     imagenes = []
     for archivo in archivos:
         try:
@@ -55,9 +99,6 @@ def obtener_imagenes_carrusel(carpeta: str) -> list:
 
 
 # === CONFIGURACIÓN DE TABLEROS POWER BI ===
-# Pega aquí la URL de "Insertar informe" (Embed) de cada tablero.
-# En Power BI Service: abre el reporte > File > Embed report > Website or portal
-# y copia el link que empieza con https://app.powerbi.com/reportEmbed?...
 REPORTES_POWERBI = {
     "Capital Humano": "https://app.powerbi.com/view?r=eyJrIjoiNmU0MTg2NjUtMGQ1My00MjU4LWE5ODgtZTBjY2NjMTE0YjYxIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=1528e6a9ffef26f42f39",
     "Comercial": "https://app.powerbi.com/view?r=eyJrIjoiMDM4ZjMwN2EtOThlOS00ODI5LWEyNTEtOGE2NjhjZDQ2MTk5IiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=36d5c229a0939c8234c4",
@@ -69,32 +110,29 @@ REPORTES_POWERBI = {
 
 
 def mostrar_tablero_powerbi(url: str, alto: int = 650):
-    """Inserta un reporte de Power BI vía iframe. Si aún no hay URL configurada,
-    muestra un aviso en vez de romper la página."""
     if not url:
         st.markdown(
             '<div class="info-card-custom">⚠️ Este tablero todavía no tiene una URL '
-            'de Power BI configurada. Pégala en el diccionario '
-            '<code>REPORTES_POWERBI</code> dentro del código.</div>',
+            "de Power BI configurada. Pégala en el diccionario "
+            "<code>REPORTES_POWERBI</code> dentro del código.</div>",
             unsafe_allow_html=True,
         )
         return
     components.iframe(url, height=alto, scrolling=True)
 
 
-def construir_carrusel_html(imagenes_b64, titulo, subtitulo, kpis=None, alto=380, intervalo_ms=4500):
-    """Arma un carrusel HTML/CSS/JS autocontenido (con overlay oscuro) para
-    incrustar vía st.components.v1.html. Si no hay imágenes, usa un fondo degradado
-    de respaldo para que el diseño se vea terminado de todas formas."""
-
+def construir_carrusel_html(
+    imagenes_b64, titulo, subtitulo, kpis=None, alto=380, intervalo_ms=4500
+):
     if imagenes_b64:
         slides_html = "".join(
             f'<div class="hero-slide{" active" if i == 0 else ""}" '
-            f'style="background-image:url(\'{img}\')"></div>'
+            f"style=\"background-image:url('{img}')\"></div>"
             for i, img in enumerate(imagenes_b64)
         )
         dots_html = "".join(
-            f'<span class="{"active" if i == 0 else ""}"></span>' for i in range(len(imagenes_b64))
+            f'<span class="{"active" if i == 0 else ""}"></span>'
+            for i in range(len(imagenes_b64))
         )
         mostrar_dots = len(imagenes_b64) > 1
     else:
@@ -230,12 +268,9 @@ slug_seleccionado = slugify(st.session_state.menu_seleccionado)
 st.markdown(
     f"""
     <style>
-        /* 1. Fondo principal continuo de la barra lateral */
         [data-testid="stSidebar"] {{
             background-color: #0E0E3A !important;
         }}
-
-        /* 1.b Flecha de colapsar/expandir barra lateral: hacerla notoria */
         [data-testid="stSidebarCollapseButton"] button {{
             background-color: rgba(255, 255, 255, 0.10) !important;
             border-radius: 8px !important;
@@ -250,8 +285,6 @@ st.markdown(
         [data-testid="stSidebarCollapseButton"] button:hover {{
             background-color: rgba(255, 255, 255, 0.2) !important;
         }}
-
-        /* 2. Layout general: menú arriba, logout pegado abajo */
         [data-testid="stSidebarContent"] {{
             display: flex !important;
             flex-direction: column !important;
@@ -259,8 +292,6 @@ st.markdown(
             padding-top: 10px !important;
             padding-bottom: 20px !important;
         }}
-
-        /* TÍTULO SECCIÓN */
         .menu-titulo-custom {{
             color: rgba(255, 255, 255, 0.35) !important;
             font-size: 0.75rem !important;
@@ -269,9 +300,7 @@ st.markdown(
             letter-spacing: 1.5px !important;
             margin: 10px 0 10px 14px !important;
             display: block !important;
-        }}
-
-        /* 3. Estilo base de TODOS los botones del menú (estado inactivo) */
+        }
         [data-testid="stSidebar"] [data-testid="stButton"] button {{
             background-color: transparent !important;
             border: none !important;
@@ -289,7 +318,6 @@ st.markdown(
             gap: 10px !important;
             transition: background-color 0.2s ease, color 0.2s ease !important;
         }}
-
         [data-testid="stSidebar"] [data-testid="stButton"] button p,
         [data-testid="stSidebar"] [data-testid="stButton"] button span,
         [data-testid="stSidebar"] [data-testid="stButton"] button div {{
@@ -297,28 +325,20 @@ st.markdown(
             font-size: inherit !important;
             font-weight: inherit !important;
         }}
-
-        /* Hover estilo para los módulos */
         [data-testid="stSidebar"] [data-testid="stButton"] button:hover {{
             background-color: rgba(255, 255, 255, 0.07) !important;
             color: #FFFFFF !important;
         }}
-
-        /* 4. BOTÓN ACTIVO: se pinta solo el contenedor cuya key coincide con la selección */
         .st-key-menu_{slug_seleccionado} button {{
             background-color: #4B4FE8 !important;
             color: #FFFFFF !important;
             font-weight: 600 !important;
             box-shadow: 0px 4px 10px rgba(75, 79, 232, 0.35) !important;
         }}
-
-        /* Separador antes del bloque inferior */
         .sidebar-divider {{
             border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
             margin: 8px 14px 6px 14px !important;
         }}
-
-        /* Leyenda debajo de la línea */
         .sidebar-leyenda {{
             color: rgba(255, 255, 255, 0.30) !important;
             font-size: 0.7rem !important;
@@ -328,26 +348,19 @@ st.markdown(
             margin: 0 0 4px 0 !important;
             display: block !important;
         }}
-
-        /* Empuja todo el bloque inferior (línea + leyenda + logout) al fondo,
-           y separa el logout de la leyenda con un espacio flexible */
         .sidebar-bottom-container {{
             margin-top: auto !important;
             display: flex !important;
             flex-direction: column !important;
         }}
-
         .sidebar-bottom-spacer {{
             flex-grow: 1 !important;
             min-height: 24px !important;
         }}
-
         .sidebar-bottom-container [data-testid="stButton"] button:hover {{
             background-color: rgba(211, 47, 47, 0.18) !important;
             color: #FF6B6B !important;
         }}
-
-        /* Mantener cajas de Login legibles */
         .stTextInput input {{
             background-color: #FFFFFF !important;
             color: #1A1A1A !important;
@@ -356,8 +369,6 @@ st.markdown(
         .stTextInput label {{
             color: #1A1A1A !important;
         }}
-
-        /* === 5. ÁREA PRINCIPAL: diseño más profesional === */
         [data-testid="stAppViewContainer"] {{
             background-color: #F3F4FA !important;
         }}
@@ -385,7 +396,6 @@ st.markdown(
             color: #1E1F45 !important;
             font-weight: 700 !important;
         }}
-        /* Tarjeta de nota corporativa (reemplaza st.info) */
         .info-card-custom {{
             background-color: #FFFFFF !important;
             border-left: 4px solid #4B4FE8 !important;
@@ -402,11 +412,8 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-# Lógica de Validación de Login
+
 def obtener_credenciales():
-    """Lee usuario/contraseña desde st.secrets (configurados en Streamlit Cloud).
-    Si no hay secrets configurados (ej. pruebas en tu máquina), usa un
-    respaldo local — recuerda reemplazarlo antes de subir a producción."""
     try:
         return st.secrets["auth"]["usuario"], st.secrets["auth"]["contrasena"]
     except Exception:
@@ -435,13 +442,11 @@ if not st.session_state.autenticado:
 
 # Vista Principal del Portal (Autenticado)
 else:
-    # Encabezado del Menú en la barra lateral
     st.sidebar.markdown(
         '<span class="menu-titulo-custom">Módulos de Análisis</span>',
         unsafe_allow_html=True,
     )
 
-    # Diccionario de módulos: clave -> (icono, etiqueta)
     opciones_menu = {
         "Inicio": ("🏠", "Inicio"),
         "Capital Humano": ("👥", "Capital Humano"),
@@ -452,9 +457,6 @@ else:
         "Códigos de Falla": ("⚠️", "Códigos de Falla"),
     }
 
-    # Renderizado de los botones del menú.
-    # Cada botón va dentro de un st.container(key=...) para poder
-    # apuntarle con CSS individualmente (clase .st-key-<key>).
     for clave, (icono, etiqueta) in opciones_menu.items():
         slug = slugify(clave)
         with st.sidebar.container(key=f"menu_{slug}"):
@@ -462,15 +464,20 @@ else:
                 st.session_state.menu_seleccionado = clave
                 st.rerun()
 
-    # Separador + botón de Cerrar Sesión anclado al pie de la barra lateral
     with st.sidebar:
-        st.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
-        st.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-bottom-container">', unsafe_allow_html=True
+        )
+        st.markdown(
+            '<div class="sidebar-divider"></div>', unsafe_allow_html=True
+        )
         st.markdown(
             '<span class="sidebar-leyenda">Desarrollo De Datos</span>',
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
+        st.markdown(
+            '<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True
+        )
         if st.button("🚪  Cerrar Sesión", key="btn_logout"):
             st.session_state.autenticado = False
             st.session_state.menu_seleccionado = "Inicio"
@@ -487,8 +494,6 @@ else:
     area = st.session_state.menu_seleccionado
 
     if area == "Inicio":
-        # Carrusel de imágenes de la empresa (lee automáticamente de RUTA_CARRUSEL).
-        # Si la carpeta no existe o está vacía, se muestra un fondo degradado de respaldo.
         imagenes_hero = obtener_imagenes_carrusel(RUTA_CARRUSEL)
         html_hero = construir_carrusel_html(
             imagenes_b64=imagenes_hero,
@@ -500,8 +505,8 @@ else:
         st.markdown(
             """
             <div class="info-card-custom">
-                Nota corporativa: Para la descarga o extracción de registros optimizados
-                con métricas DAX, localice las herramientas de exportación dispuestas en
+                Nota corporativa: Para la descarga o extracción de registros optimizados 
+                con métricas DAX, localice las herramientas de exportación dispuestas en 
                 la base de cada sección correspondiente.
             </div>
             """,
@@ -519,6 +524,30 @@ else:
     elif area == "Liquidaciones":
         st.subheader("🧮 Módulo de Liquidaciones")
         mostrar_tablero_powerbi(REPORTES_POWERBI["Liquidaciones"])
+
+        # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE SQL ---
+        st.markdown("---")
+        try:
+            # 1. Traemos los datos frescos desde SQL
+            df_liq = obtener_datos_liquidaciones_sql()
+
+            # 2. Convertimos el DataFrame a un archivo Excel binario
+            output = io.BytesIO()
+            with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                df_liq.to_excel(writer, index=False, sheet_name="Liquidaciones")
+            excel_data = output.getvalue()
+
+            # 3. Dibujamos el botón de descarga abajo del Power BI
+            st.download_button(
+                label="📥 Descargar Detalle de Liquidaciones en Excel (.xlsx)",
+                data=excel_data,
+                file_name="Detalle_Liquidaciones_Operadores.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            )
+        except Exception as error_sql:
+            st.error(
+                f"No se pudieron extraer los registros de SQL en tiempo real: {error_sql}"
+            )
 
     elif area == "Operaciones":
         st.subheader("⚙️ Control de Operaciones")
