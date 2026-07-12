@@ -1,9 +1,10 @@
 import base64
-import io  # <-- NUEVO: Para crear el Excel en memoria
+import io  # Para crear el Excel en memoria
 import re
 from pathlib import Path
 
-import pandas as pd  # <-- NUEVO: Para procesar los datos
+import numpy as np  # <-- NUEVO: Para manejar la lógica de división entre cero de Pandas
+import pandas as pd  # Para procesar los datos
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -32,38 +33,90 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === NUEVA FUNCIÓN: CONEXIÓN A TU BASE DE DATOS SQL ===
+# === FUNCIÓN ACTUALIZADA: REPLICA DE LOGICA DAX DESDE AZURE SQL ===
 def obtener_datos_liquidaciones_sql():
-    """Conecta a la base de datos SQL de Express San Silvestre y extrae la tabla de liquidaciones."""
-    # REEMPLAZA ESTAS CREDENCIALES CON LAS REALES DE TU SERVIDOR
+    """Conecta a la base de datos SQL de Express San Silvestre y extrae la tabla de liquidaciones con todas sus medidas calculadas."""
     servidor = "gmterpbi.database.windows.net"
     base_datos = "GMTERP_BI_ESS970424CS1"
     usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
     contrasena = "LewnAYYq5;."
 
+    # Cadena limpia con concatenación estándar para evitar colisiones de llaves con f-strings
     cadena_conexion = (
-        f"DRIVER={{SQL Server}};"
-        f"SERVER={servidor};"
-        f"DATABASE={base_datos};"
-        f"UID={usuario};"
-        f"PWD={contrasena}"
+        "DRIVER={SQL Server};"
+        "SERVER=" + servidor + ";"
+        "DATABASE=" + base_datos + ";"
+        "UID=" + usuario + ";"
+        "PWD=" + contrasena + ";"
+        "Authentication=ActiveDirectoryPassword;"
     )
 
-    # Coloca el query exacto que extrae las columnas que necesitas en tu Excel
+    # Query unificado que calcula cada medida DAX basándose en sus filtros de 'SubConcepto'
     query = """
         SELECT 
-            Folio, 
-            Unidad, 
-            Nombre, 
-            Gastos_Extras, 
-            Total_Gastos, 
-            CreadoEl, 
-            Creo 
-        FROM TuTablaLiquidaciones
-    """
+            l.Folio,
+            l.Codigo AS Unidad,
+            l.Nombre,
+            l.CreadoEl,
+            l.Creo,
+            l.Ingresos,
+            
+            -- 1. Gastos Extras (Medida Original)
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
+                'TRANSITO', 'COMPRA DE LLANTA', 'REFACCIONES', 'SUPERVISOR', 
+                'TALACHAS', 'MOVIMIENTOS PENDIENTES', 'GUIA', 'TRANSITO RECUPERABLE', 
+                'ACEITE', 'GATAS'
+            ) THEN e.Total ELSE 0 END), 0) AS Gastos_Extras,
 
-    # Pandas ejecuta la consulta SQL y crea el DataFrame automáticamente
+            -- 2. Sobresueldos (BONOS, VIATICOS)
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
+                'BONOS', 'VIATICOS'
+            ) THEN e.Total ELSE 0 END), 0) AS Sobresueldos,
+
+            -- 3. G Pre Aut (ESTANCIA, REPARTOS, etc.)
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
+                'ESTANCIA', 'REPARTOS (SORIANA)', 'LAVADA THERMO', 
+                'ENTRADA MERCADO', 'PENSION', 'LONAS FULL'
+            ) THEN e.Total ELSE 0 END), 0) AS G_Pre_Aut,
+
+            -- 4. G Pre Aut / OP (FITOSANITARIA, PERMISO DE TRANSITO, etc.)
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
+                'FITOSANITARIA', 'PERMISO DE TRANSITO', 'TRANSFER', 'COMISIONES'
+            ) THEN e.Total ELSE 0 END), 0) AS G_Pre_Aut_OP,
+
+            -- Desglose por columnas individuales para el Excel resultante
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'COMPRA DE LLANTA' THEN e.Total ELSE 0 END), 0) AS Gasto_Compra_de_Llanta,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'MOVIMIENTOS PENDIENTES' THEN e.Total ELSE 0 END), 0) AS Gasto_Movimientos_Pendientes,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'REFACCIONES' THEN e.Total ELSE 0 END), 0) AS Gasto_Refacciones,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TALACHAS' THEN e.Total ELSE 0 END), 0) AS Gasto_Talachas,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'GATAS' THEN e.Total ELSE 0 END), 0) AS Gasto_Gatas,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'GUIA' THEN e.Total ELSE 0 END), 0) AS Gasto_Guia,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'SUPERVISOR' THEN e.Total ELSE 0 END), 0) AS Gasto_Supervisor,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TRANSITO' THEN e.Total ELSE 0 END), 0) AS Gasto_Transito,
+            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TRANSITO RECUPERABLE' THEN e.Total ELSE 0 END), 0) AS Gasto_Transito_Recuperable
+
+        FROM liquidaciones l
+        LEFT JOIN ViajesTrayectos vt ON vt.IdLiquidacion = l.IdLiquidacion
+        LEFT JOIN EgresosViajes e ON e.IDViaje = vt.IDViaje
+        GROUP BY l.IdLiquidacion, l.Folio, l.Codigo, l.Nombre, l.CreadoEl, l.Creo, l.Ingresos
+    """
+    
+    # Ejecutamos la consulta y creamos el DataFrame
     df = pd.read_sql(query, cadena_conexion)
+    
+    # --- PROCESAMIENTO PANDAS (Equivalente a tus medidas DAX compuestas) ---
+    
+    # Gastos OK = [Gastos Extras] + [Sobresueldos] + [G Pre Aut] + [G Pre Aut / OP]
+    df['Gastos_OK'] = df['Gastos_Extras'] + df['Sobresueldos'] + df['G_Pre_Aut'] + df['G_Pre_Aut_OP']
+    
+    # % Gastos Extras = DIVIDE([Gastos Extras], SUM(Liquidaciones[Ingresos])) * 100
+    df['Porcentaje_Gastos_Extras'] = (df['Gastos_Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
+    df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
+    
+    # % Gastos Total (Basado en la medida 'gastos' compuesta)
+    df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
+    df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
+    
     return df
 
 
@@ -300,7 +353,7 @@ st.markdown(
             letter-spacing: 1.5px !important;
             margin: 10px 0 10px 14px !important;
             display: block !important;
-        }
+        }}
         [data-testid="stSidebar"] [data-testid="stButton"] button {{
             background-color: transparent !important;
             border: none !important;
@@ -465,24 +518,15 @@ else:
                 st.rerun()
 
     with st.sidebar:
-        st.markdown(
-            '<div class="sidebar-bottom-container">', unsafe_allow_html=True
-        )
-        st.markdown(
-            '<div class="sidebar-divider"></div>', unsafe_allow_html=True
-        )
-        st.markdown(
-            '<span class="sidebar-leyenda">Desarrollo De Datos</span>',
-            unsafe_allow_html=True,
-        )
-        st.markdown(
-            '<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True
-        )
+        st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
+        st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+        st.sidebar.markdown('<span class="sidebar-leyenda">Desarrollo De Datos</span>', unsafe_allow_html=True)
+        st.sidebar.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
         if st.button("🚪  Cerrar Sesión", key="btn_logout"):
             st.session_state.autenticado = False
             st.session_state.menu_seleccionado = "Inicio"
             st.rerun()
-        st.markdown("</div>", unsafe_allow_html=True)
+        st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     # === Área Principal de Contenidos ===
     st.title("Express San Silvestre")
@@ -528,7 +572,7 @@ else:
         # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE SQL ---
         st.markdown("---")
         try:
-            # 1. Traemos los datos frescos desde SQL
+            # 1. Traemos los datos frescos desde SQL con las nuevas medidas incorporadas
             df_liq = obtener_datos_liquidaciones_sql()
 
             # 2. Convertimos el DataFrame a un archivo Excel binario
