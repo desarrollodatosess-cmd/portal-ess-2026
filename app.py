@@ -3,8 +3,9 @@ import io  # Para crear el Excel en memoria
 import re
 from pathlib import Path
 
-import numpy as np  # <-- NUEVO: Para manejar la lógica de división entre cero de Pandas
+import numpy as np  # Para manejar la lógica de división entre cero de Pandas
 import pandas as pd  # Para procesar los datos
+import pyodbc  # <-- INTEGRADO: Conexión nativa SQL Server para Pandas
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -33,15 +34,15 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === FUNCIÓN ACTUALIZADA: REPLICA DE LOGICA DAX DESDE AZURE SQL ===
+# === FUNCIÓN CORREGIDA: ENRUTAMIENTO DIRECTO PYODBC ===
 def obtener_datos_liquidaciones_sql():
-    """Conecta a la base de datos SQL de Express San Silvestre y extrae la tabla de liquidaciones con todas sus medidas calculadas."""
+    """Conecta a la base de datos SQL de Express San Silvestre usando pyodbc y extrae las liquidaciones."""
     servidor = "gmterpbi.database.windows.net"
     base_datos = "GMTERP_BI_ESS970424CS1"
     usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
     contrasena = "LewnAYYq5;."
 
-    # Cadena limpia con concatenación estándar para evitar colisiones de llaves con f-strings
+    # Cadena limpia con concatenación estándar
     cadena_conexion = (
         "DRIVER={SQL Server};"
         "SERVER=" + servidor + ";"
@@ -101,19 +102,21 @@ def obtener_datos_liquidaciones_sql():
         GROUP BY l.IdLiquidacion, l.Folio, l.Codigo, l.Nombre, l.CreadoEl, l.Creo, l.Ingresos
     """
     
-    # Ejecutamos la consulta y creamos el DataFrame
-    df = pd.read_sql(query, cadena_conexion)
+    # Abrimos la conexión física utilizando pyodbc de forma explícita
+    conexion = pyodbc.connect(cadena_conexion)
+    
+    # Pasamos el objeto de conexión en lugar de la cadena de texto para omitir SQLAlchemy
+    df = pd.read_sql(query, conexion)
+    
+    # Cerramos la conexión activa
+    conexion.close()
     
     # --- PROCESAMIENTO PANDAS (Equivalente a tus medidas DAX compuestas) ---
-    
-    # Gastos OK = [Gastos Extras] + [Sobresueldos] + [G Pre Aut] + [G Pre Aut / OP]
     df['Gastos_OK'] = df['Gastos_Extras'] + df['Sobresueldos'] + df['G_Pre_Aut'] + df['G_Pre_Aut_OP']
     
-    # % Gastos Extras = DIVIDE([Gastos Extras], SUM(Liquidaciones[Ingresos])) * 100
     df['Porcentaje_Gastos_Extras'] = (df['Gastos_Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
     df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
     
-    # % Gastos Total (Basado en la medida 'gastos' compuesta)
     df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
     df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
     
