@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np  # Para manejar la lógica de división entre cero de Pandas
 import pandas as pd  # Para procesar los datos
-import pyodbc  # <-- INTEGRADO: Conexión nativa SQL Server para Pandas
+import pymssql  # <-- NUEVO: Conexión nativa compatible con Streamlit Cloud sin drivers ODBC
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -34,24 +34,13 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === FUNCIÓN CORREGIDA PARA ENTORNO LINUX (STREAMLIT CLOUD) ===
+# === FUNCIÓN CORREGIDA CON PYMSSQL (EVITA ERRORES DE DRIVER) ===
 def obtener_datos_liquidaciones_sql():
-    """Conecta a la base de datos SQL de Express San Silvestre usando pyodbc y extrae las liquidaciones."""
+    """Conecta a la base de datos SQL de Express San Silvestre usando pymssql y extrae las liquidaciones."""
     servidor = "gmterpbi.database.windows.net"
     base_datos = "GMTERP_BI_ESS970424CS1"
     usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
     contrasena = "LewnAYYq5;."
-
-    # Cadena corregida con el driver de Linux y cifrado seguro obligatorio para Azure
-    cadena_conexion = (
-        "DRIVER={ODBC Driver 18 for SQL Server};"
-        "SERVER=" + servidor + ";"
-        "DATABASE=" + base_datos + ";"
-        "UID=" + usuario + ";"
-        "PWD=" + contrasena + ";"
-        "Encrypt=yes;"
-        "TrustServerCertificate=yes;"
-    )
 
     # Query unificado que calcula cada medida DAX basándose en sus filtros de 'SubConcepto'
     query = """
@@ -103,10 +92,15 @@ def obtener_datos_liquidaciones_sql():
         GROUP BY l.IdLiquidacion, l.Folio, l.Codigo, l.Nombre, l.CreadoEl, l.Creo, l.Ingresos
     """
     
-    # Abrimos la conexión física utilizando pyodbc de forma explícita
-    conexion = pyodbc.connect(cadena_conexion)
+    # Conexión directa mediante pymssql (No requiere cadenas DRIVER ni configuraciones odbc de Linux)
+    conexion = pymssql.connect(
+        server=servidor,
+        user=usuario,
+        password=contrasena,
+        database=base_datos
+    )
     
-    # Pasamos el objeto de conexión en lugar de la cadena de texto para omitir SQLAlchemy
+    # Pandas lee el query utilizando el puente nativo de la conexión activa
     df = pd.read_sql(query, conexion)
     
     # Cerramos la conexión activa
@@ -182,7 +176,6 @@ def construir_carrusel_html(
     imagenes_b64, titulo, subtitulo, kpis=None, alto=380, intervalo_ms=4500
 ):
     if imagenes_b64:
-        # Corregido: Se eliminó el string residual encerrando la iteración
         slides_html = "".join(
             f'<div class="hero-slide{" active" if i == 0 else ""}" '
             f"style=\"background-image:url('{img}')\"></div>"
