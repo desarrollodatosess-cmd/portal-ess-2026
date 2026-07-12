@@ -36,10 +36,10 @@ def slugify(texto: str) -> str:
 def obtener_datos_liquidaciones_sql():
     """Conecta a la base de datos SQL de Express San Silvestre y extrae la tabla de liquidaciones."""
     # REEMPLAZA ESTAS CREDENCIALES CON LAS REALES DE TU SERVIDOR
-    servidor = "TU_SERVIDOR_SQL"
-    base_datos = "TU_BASE_DATOS"
-    usuario = "TU_USUARIO"
-    contrasena = "TU_CONTRASEÑA"
+    servidor = "gmterpbi.database.windows.net"
+    base_datos = "GMTERP_BI_ESS970424CS1"
+    usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
+    contrasena = "LewnAYYq5;."
 
     cadena_conexion = (
         f"DRIVER={{SQL Server}};"
