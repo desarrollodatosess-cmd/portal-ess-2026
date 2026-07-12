@@ -34,7 +34,7 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === FUNCIÓN CORREGIDA: ENRUTAMIENTO DIRECTO PYODBC ===
+# === FUNCIÓN CORREGIDA PARA ENTORNO LINUX (STREAMLIT CLOUD) ===
 def obtener_datos_liquidaciones_sql():
     """Conecta a la base de datos SQL de Express San Silvestre usando pyodbc y extrae las liquidaciones."""
     servidor = "gmterpbi.database.windows.net"
@@ -42,14 +42,15 @@ def obtener_datos_liquidaciones_sql():
     usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
     contrasena = "LewnAYYq5;."
 
-    # Cadena limpia con concatenación estándar
+    # Cadena corregida con el driver de Linux y cifrado seguro obligatorio para Azure
     cadena_conexion = (
-        "DRIVER={SQL Server};"
+        "DRIVER={ODBC Driver 18 for SQL Server};"
         "SERVER=" + servidor + ";"
         "DATABASE=" + base_datos + ";"
         "UID=" + usuario + ";"
         "PWD=" + contrasena + ";"
-        "Authentication=ActiveDirectoryPassword;"
+        "Encrypt=yes;"
+        "TrustServerCertificate=yes;"
     )
 
     # Query unificado que calcula cada medida DAX basándose en sus filtros de 'SubConcepto'
@@ -181,10 +182,11 @@ def construir_carrusel_html(
     imagenes_b64, titulo, subtitulo, kpis=None, alto=380, intervalo_ms=4500
 ):
     if imagenes_b64:
+        # Corregido: Se eliminó el string residual encerrando la iteración
         slides_html = "".join(
             f'<div class="hero-slide{" active" if i == 0 else ""}" '
             f"style=\"background-image:url('{img}')\"></div>"
-            f"for i, img in enumerate(imagenes_b64)"
+            for i, img in enumerate(imagenes_b64)
         )
         dots_html = "".join(
             f'<span class="{"active" if i == 0 else ""}"></span>'
