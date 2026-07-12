@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np  # Para manejar la lógica de división entre cero de Pandas
 import pandas as pd  # Para procesar los datos
-import pymssql  # <-- NUEVO: Conexión nativa compatible con Streamlit Cloud sin drivers ODBC
+import pymssql  # Conexión nativa compatible con Streamlit Cloud sin drivers ODBC
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -34,10 +34,11 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === FUNCIÓN CORREGIDA CON PYMSSQL (EVITA ERRORES DE DRIVER) ===
+# === FUNCIÓN CORREGIDA CON EL PUERTO DE AZURE SQL PARA EVITAR ERRORES DE LOGEO ===
 def obtener_datos_liquidaciones_sql():
     """Conecta a la base de datos SQL de Express San Silvestre usando pymssql y extrae las liquidaciones."""
-    servidor = "gmterpbi.database.windows.net"
+    # SOLUCIÓN: Añadimos ",1433" para forzar a pymssql a ignorar el arroba (@) del usuario y apuntar al servidor correcto
+    servidor = "gmterpbi.database.windows.net,1433" 
     base_datos = "GMTERP_BI_ESS970424CS1"
     usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
     contrasena = "LewnAYYq5;."
