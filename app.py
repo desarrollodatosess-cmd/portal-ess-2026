@@ -184,7 +184,7 @@ def construir_carrusel_html(
         slides_html = "".join(
             f'<div class="hero-slide{" active" if i == 0 else ""}" '
             f"style=\"background-image:url('{img}')\"></div>"
-            for i, img in enumerate(imagenes_b64)
+            f"for i, img in enumerate(imagenes_b64)"
         )
         dots_html = "".join(
             f'<span class="{"active" if i == 0 else ""}"></span>'
@@ -385,7 +385,7 @@ st.markdown(
             background-color: rgba(255, 255, 255, 0.07) !important;
             color: #FFFFFF !important;
         }}
-        .st-key-menu_{slug_seleccionado} button {{
+        .st-key-btn_{slug_seleccionado} button {{
             background-color: #4B4FE8 !important;
             color: #FFFFFF !important;
             font-weight: 600 !important;
@@ -515,21 +515,20 @@ else:
 
     for clave, (icono, etiqueta) in opciones_menu.items():
         slug = slugify(clave)
-        with st.sidebar.container(key=f"menu_{slug}"):
-            if st.button(f"{icono}  {etiqueta}", key=f"btn_{slug}"):
-                st.session_state.menu_seleccionado = clave
-                st.rerun()
-
-    with st.sidebar:
-        st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
-        st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
-        st.sidebar.markdown('<span class="sidebar-leyenda">Desarrollo De Datos</span>', unsafe_allow_html=True)
-        st.sidebar.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
-        if st.button("🚪  Cerrar Sesión", key="btn_logout"):
-            st.session_state.autenticado = False
-            st.session_state.menu_seleccionado = "Inicio"
+        if st.sidebar.button(f"{icono}  {etiqueta}", key=f"btn_{slug}"):
+            st.session_state.menu_seleccionado = clave
             st.rerun()
-        st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+    # Barra lateral - Contenedor inferior
+    st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<span class="sidebar-leyenda">Desarrollo De Datos</span>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
+    if st.sidebar.button("🚪  Cerrar Sesión", key="btn_logout"):
+        st.session_state.autenticado = False
+        st.session_state.menu_seleccionado = "Inicio"
+        st.rerun()
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
     # === Área Principal de Contenidos ===
     st.title("Express San Silvestre")
