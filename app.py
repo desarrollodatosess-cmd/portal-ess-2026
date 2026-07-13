@@ -38,8 +38,8 @@ def slugify(texto: str) -> str:
 # === CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI CON MSAL (ROPC) ===
 def obtener_token_powerbi():
     """Obtiene un token de acceso OAuth2 seguro utilizando MSAL sin intercepción de MFA."""
-    tenant_id = "1fc53109-6600-4a1f-a6bc-7ddfd4b3ddcf"  # Id. de inquilino de Express San Silvestre
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    # Cambiado a '/organizations' global para resolver el error 'Unable to get authority configuration'
+    authority = "https://login.microsoftonline.com/organizations"
     client_id = "23d8fec1-787b-475f-b38d-c8eac9e3da4a"  # Client ID nativo estándar de Power BI
     
     # El alcance (scope) estándar requerido para interactuar con los datasets de Power BI
@@ -58,7 +58,7 @@ def obtener_token_powerbi():
             if token_resultado:
                 return token_resultado.get("access_token")
         
-        # Flujo directo con usuario y contraseña (exclusión global exitosa de Security Defaults)
+        # Flujo directo con usuario y contraseña (exclusión global de Security Defaults)
         token_resultado = app.acquire_token_by_username_password(
             username=st.secrets["POWERBI_USER"],
             password=st.secrets["POWERBI_PASSWORD"],
