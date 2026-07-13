@@ -5,7 +5,7 @@ from pathlib import Path
 
 import numpy as np  # Para manejar la lógica de división entre cero de Pandas
 import pandas as pd  # Para procesar los datos
-import pymssql  # Conexión nativa compatible con Streamlit Cloud sin drivers ODBC
+import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
 import streamlit as st
 import streamlit.components.v1 as components
 
@@ -34,89 +34,108 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === FUNCIÓN CORREGIDA CON EL PUERTO DE AZURE SQL PARA EVITAR ERRORES DE LOGEO ===
-def obtener_datos_liquidaciones_sql():
-    """Conecta a la base de datos SQL de Express San Silvestre usando pymssql y extrae las liquidaciones."""
-    # SOLUCIÓN: Añadimos ",1433" para forzar a pymssql a ignorar el arroba (@) del usuario y apuntar al servidor correcto
-    servidor = "gmterpbi.database.windows.net,1433" 
-    base_datos = "GMTERP_BI_ESS970424CS1"
-    usuario = "admin@SanSilvestreAllende.onmicrosoft.com"
-    contrasena = "LewnAYYq5;."
+# === NUEVA CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI ===
+def obtener_token_powerbi():
+    """Obtiene un token de acceso OAuth2 para autenticarse con la API de Power BI."""
+    url_auth = "https://login.microsoftonline.com/common/oauth2/token"
+    
+    # Datos de autenticación para la API global de Power BI usando st.secrets
+    cuerpo_auth = {
+        "grant_type": "password",
+        "scope": "openid",
+        "resource": "https://analysis.windows.net/powerbi/api",
+        "client_id": "23d8fec1-787b-475f-b38d-c8eac9e3da4a",  # Client ID nativo estándar de Power BI
+        "username": st.secrets["POWERBI_USER"],
+        "password": st.secrets["POWERBI_PASSWORD"]
+    }
+    
+    try:
+        respuesta = requests.post(url_auth, data=cuerpo_auth)
+        if respuesta.status_code == 200:
+            return respuesta.json().get("access_token")
+        else:
+            st.error(f"Error de autenticación con Microsoft: {respuesta.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error de red al intentar autenticar con Microsoft: {e}")
+        return None
 
-    # Query unificado que calcula cada medida DAX basándose en sus filtros de 'SubConcepto'
-    query = """
-        SELECT 
-            l.Folio,
-            l.Codigo AS Unidad,
-            l.Nombre,
-            l.CreadoEl,
-            l.Creo,
-            l.Ingresos,
+
+def obtener_datos_liquidaciones_powerbi():
+    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX."""
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+        
+    # Identificador del modelo semántico (Dataset ID) obtenido de modelView
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92" 
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+    
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json"
+    }
+    
+    # Consulta DAX estructurada para traer el tablón de datos.
+    # NOTA: Ajusta los nombres exactos si difieren de tu modelView
+    dax_query = {
+        "queries": [
+            {
+                "query": """
+                EVALUATE
+                SUMMARIZECOLUMNS(
+                    'liquidaciones'[Folio],
+                    'liquidaciones'[Codigo],
+                    'liquidaciones'[Nombre],
+                    'liquidaciones'[CreadoEl],
+                    'liquidaciones'[Creo],
+                    'liquidaciones'[Ingresos],
+                    'liquidaciones'[Gastos_Extras],
+                    'liquidaciones'[Sobresueldos],
+                    'liquidaciones'[G_Pre_Aut],
+                    'liquidaciones'[G_Pre_Aut_OP]
+                )
+                """
+            }
+        ]
+    }
+    
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+        
+        if respuesta.status_code == 200:
+            filas = respuesta.json()['results'][0]['tables'][0]['rows']
+            df = pd.DataFrame(filas)
             
-            -- 1. Gastos Extras (Medida Original)
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
-                'TRANSITO', 'COMPRA DE LLANTA', 'REFACCIONES', 'SUPERVISOR', 
-                'TALACHAS', 'MOVIMIENTOS PENDIENTES', 'GUIA', 'TRANSITO RECUPERABLE', 
-                'ACEITE', 'GATAS'
-            ) THEN e.Total ELSE 0 END), 0) AS Gastos_Extras,
-
-            -- 2. Sobresueldos (BONOS, VIATICOS)
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
-                'BONOS', 'VIATICOS'
-            ) THEN e.Total ELSE 0 END), 0) AS Sobresueldos,
-
-            -- 3. G Pre Aut (ESTANCIA, REPARTOS, etc.)
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
-                'ESTANCIA', 'REPARTOS (SORIANA)', 'LAVADA THERMO', 
-                'ENTRADA MERCADO', 'PENSION', 'LONAS FULL'
-            ) THEN e.Total ELSE 0 END), 0) AS G_Pre_Aut,
-
-            -- 4. G Pre Aut / OP (FITOSANITARIA, PERMISO DE TRANSITO, etc.)
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) IN (
-                'FITOSANITARIA', 'PERMISO DE TRANSITO', 'TRANSFER', 'COMISIONES'
-            ) THEN e.Total ELSE 0 END), 0) AS G_Pre_Aut_OP,
-
-            -- Desglose por columnas individuales para el Excel resultante
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'COMPRA DE LLANTA' THEN e.Total ELSE 0 END), 0) AS Gasto_Compra_de_Llanta,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'MOVIMIENTOS PENDIENTES' THEN e.Total ELSE 0 END), 0) AS Gasto_Movimientos_Pendientes,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'REFACCIONES' THEN e.Total ELSE 0 END), 0) AS Gasto_Refacciones,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TALACHAS' THEN e.Total ELSE 0 END), 0) AS Gasto_Talachas,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'GATAS' THEN e.Total ELSE 0 END), 0) AS Gasto_Gatas,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'GUIA' THEN e.Total ELSE 0 END), 0) AS Gasto_Guia,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'SUPERVISOR' THEN e.Total ELSE 0 END), 0) AS Gasto_Supervisor,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TRANSITO' THEN e.Total ELSE 0 END), 0) AS Gasto_Transito,
-            COALESCE(SUM(CASE WHEN TRIM(UPPER(e.SubConcepto)) = 'TRANSITO RECUPERABLE' THEN e.Total ELSE 0 END), 0) AS Gasto_Transito_Recuperable
-
-        FROM liquidaciones l
-        LEFT JOIN ViajesTrayectos vt ON vt.IdLiquidacion = l.IdLiquidacion
-        LEFT JOIN EgresosViajes e ON e.IDViaje = vt.IDViaje
-        GROUP BY l.IdLiquidacion, l.Folio, l.Codigo, l.Nombre, l.CreadoEl, l.Creo, l.Ingresos
-    """
-    
-    # Conexión directa mediante pymssql (No requiere cadenas DRIVER ni configuraciones odbc de Linux)
-    conexion = pymssql.connect(
-        server=servidor,
-        user=usuario,
-        password=contrasena,
-        database=base_datos
-    )
-    
-    # Pandas lee el query utilizando el puente nativo de la conexión activa
-    df = pd.read_sql(query, conexion)
-    
-    # Cerramos la conexión activa
-    conexion.close()
-    
-    # --- PROCESAMIENTO PANDAS (Equivalente a tus medidas DAX compuestas) ---
-    df['Gastos_OK'] = df['Gastos_Extras'] + df['Sobresueldos'] + df['G_Pre_Aut'] + df['G_Pre_Aut_OP']
-    
-    df['Porcentaje_Gastos_Extras'] = (df['Gastos_Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
-    df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
-    
-    df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
-    df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
-    
-    return df
+            # Limpiar los encabezados: la API devuelve 'NombreTabla[NombreColumna]'
+            df.columns = [col.split('[')[-1].replace(']', '') for col in df.columns]
+            
+            # Renombrar 'Codigo' a 'Unidad' si deseas mantener la misma estructura del Excel anterior
+            if 'Codigo' in df.columns:
+                df = df.rename(columns={'Codigo': 'Unidad'})
+            
+            # --- PROCESAMIENTO PANDAS (Tus cálculos originales) ---
+            df['Gastos_OK'] = (
+                df.get('Gastos_Extras', 0) + 
+                df.get('Sobresueldos', 0) + 
+                df.get('G_Pre_Aut', 0) + 
+                df.get('G_Pre_Aut_OP', 0)
+            )
+            
+            df['Porcentaje_Gastos_Extras'] = (df['Gastos_Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
+            df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
+            
+            df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
+            df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
+            
+            return df
+        else:
+            st.error(f"Error en la consulta de Power BI: {respuesta.status_code} - {respuesta.text}")
+            return None
+            
+    except Exception as e:
+        st.error(f"Error al procesar la información de Power BI: {e}")
+        return None
 
 
 # === CONFIGURACIÓN DEL CARRUSEL DE INICIO ===
@@ -567,29 +586,35 @@ else:
         st.subheader("🧮 Módulo de Liquidaciones")
         mostrar_tablero_powerbi(REPORTES_POWERBI["Liquidaciones"])
 
-        # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE SQL ---
+        # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE LA API DE POWER BI ---
         st.markdown("---")
-        try:
-            # 1. Traemos los datos frescos desde SQL con las nuevas medidas incorporadas
-            df_liq = obtener_datos_liquidaciones_sql()
+        st.markdown("### 📥 Extracción de Reporte Consolidado")
+        st.write("Genera y descarga el archivo Excel optimizado con los datos actualizados de Power BI (corte 10:00 PM).")
+        
+        # Botón para disparar la API de forma controlada
+        if st.button("Generar Reporte Excel"):
+            with st.spinner("Conectando con la nube de Microsoft y procesando métricas..."):
+                df_liq = obtener_datos_liquidaciones_powerbi()
 
-            # 2. Convertimos el DataFrame a un archivo Excel binario
-            output = io.BytesIO()
-            with pd.ExcelWriter(output, engine="openpyxl") as writer:
-                df_liq.to_excel(writer, index=False, sheet_name="Liquidaciones")
-            excel_data = output.getvalue()
+                if df_liq is not None and not df_liq.empty:
+                    try:
+                        # Convertimos el DataFrame a un archivo Excel binario
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                            df_liq.to_excel(writer, index=False, sheet_name="Liquidaciones")
+                        excel_data = output.getvalue()
 
-            # 3. Dibujamos el botón de descarga abajo del Power BI
-            st.download_button(
-                label="📥 Descargar Detalle de Liquidaciones en Excel (.xlsx)",
-                data=excel_data,
-                file_name="Detalle_Liquidaciones_Operadores.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            )
-        except Exception as error_sql:
-            st.error(
-                f"No se pudieron extraer los registros de SQL en tiempo real: {error_sql}"
-            )
+                        st.success("¡Datos procesados exitosamente!")
+                        st.download_button(
+                            label="📥 Descargar Detalle de Liquidaciones en Excel (.xlsx)",
+                            data=excel_data,
+                            file_name="Detalle_Liquidaciones_Operadores.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    except Exception as e:
+                        st.error(f"Error al generar el archivo Excel: {e}")
+                else:
+                    st.error("No se pudieron extraer los registros desde la API de Power BI Cloud.")
 
     elif area == "Operaciones":
         st.subheader("⚙️ Control de Operaciones")
