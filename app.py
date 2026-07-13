@@ -1,3 +1,4 @@
+
 import base64
 import io  # Para crear el Excel en memoria
 import re
@@ -8,7 +9,6 @@ import pandas as pd  # Para procesar los datos
 import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
 import streamlit as st
 import streamlit.components.v1 as components
-import msal  # Librería oficial de Microsoft para autenticación
 
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
@@ -35,55 +35,30 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === NUEVA CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI (DEVICE CODE FLOW) ===
+# === NUEVA CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI ===
 def obtener_token_powerbi():
-    """Obtiene un token de acceso OAuth2 usando Device Code Flow para evadir las restricciones de MFA."""
-    # Nota: Usamos el endpoint 'common' o el ID de tu Tenant si lo tienes
-    tenant_id = "common" 
-    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    """Obtiene un token de acceso OAuth2 para autenticarse con la API de Power BI."""
+    url_auth = "https://login.microsoftonline.com/common/oauth2/token"
     
-    # Client ID nativo estándar de Power BI
-    client_id = "23d8fec1-787b-475f-b38d-c8eac9e3da4a"
+    # Datos de autenticación para la API global de Power BI usando st.secrets
+    cuerpo_auth = {
+        "grant_type": "password",
+        "scope": "openid",
+        "resource": "https://analysis.windows.net/powerbi/api",
+        "client_id": "23d8fec1-787b-475f-b38d-c8eac9e3da4a",  # Client ID nativo estándar de Power BI
+        "username": st.secrets["POWERBI_USER"],
+        "password": st.secrets["POWERBI_PASSWORD"]
+    }
     
-    # Definimos los alcances requeridos para consultar los Datasets de Power BI
-    scopes = ["https://analysis.windows.net/powerbi/api/.default"]
-
     try:
-        # Inicializar la aplicación pública de MSAL
-        app = msal.PublicClientApplication(client_id, authority=authority)
-        
-        # Primero intentamos buscar un token ya existente en memoria cache para no pedir logueo cada vez
-        cuentas = app.get_accounts()
-        if cuentas:
-            resultado = app.acquire_token_silent(scopes, account=cuentas[0])
-            if resultado and "access_token" in resultado:
-                return resultado["access_token"]
-
-        # Si no hay token en caché, inicializamos el flujo de dispositivo interactivo
-        flow = app.initiate_device_flow(scopes=scopes)
-        
-        if "user_code" not in flow:
-            st.error(f"No se pudo iniciar el flujo de autenticación por dispositivo: {flow.get('error_description')}")
-            return None
-            
-        # Mostramos las instrucciones interactivas dinámicamente en Streamlit
-        st.warning("🔒 Se requiere autenticación para descargar este reporte.")
-        st.markdown(f"1. Entra a la página de Microsoft: **[{flow['verification_uri']}]({flow['verification_uri']})**")
-        st.markdown("2. Introduce el siguiente código:")
-        st.code(flow['user_code'], language="text")
-        st.info("El sistema continuará automáticamente en cuanto apruebes el acceso en tu navegador/celular.")
-        
-        # Bloquea temporalmente el script esperando a que el usuario complete el inicio de sesión
-        resultado = app.acquire_token_by_device_flow(flow)
-        
-        if "access_token" in resultado:
-            return resultado["access_token"]
+        respuesta = requests.post(url_auth, data=cuerpo_auth)
+        if respuesta.status_code == 200:
+            return respuesta.json().get("access_token")
         else:
-            st.error(f"Error al adquirir el token: {resultado.get('error_description')}")
+            st.error(f"Error de autenticación con Microsoft: {respuesta.text}")
             return None
-            
     except Exception as e:
-        st.error(f"Error de red o configuración al intentar autenticar con Microsoft: {e}")
+        st.error(f"Error de red al intentar autenticar con Microsoft: {e}")
         return None
 
 
@@ -103,6 +78,7 @@ def obtener_datos_liquidaciones_powerbi():
     }
     
     # Consulta DAX estructurada para traer el tablón de datos.
+    # NOTA: Ajusta los nombres exactos si difieren de tu modelView
     dax_query = {
         "queries": [
             {
@@ -618,7 +594,6 @@ else:
         
         # Botón para disparar la API de forma controlada
         if st.button("Generar Reporte Excel"):
-            # Colocamos el spinner envolviendo todo el proceso interactivo de auth y fetching
             with st.spinner("Conectando con la nube de Microsoft y procesando métricas..."):
                 df_liq = obtener_datos_liquidaciones_powerbi()
 
@@ -640,7 +615,7 @@ else:
                     except Exception as e:
                         st.error(f"Error al generar el archivo Excel: {e}")
                 else:
-                    st.error("No se pudieron extraer los registros desde la API de Power BI Cloud o el login fue cancelado.")
+                    st.error("No se pudieron extraer los registros desde la API de Power BI Cloud.")
 
     elif area == "Operaciones":
         st.subheader("⚙️ Control de Operaciones")
