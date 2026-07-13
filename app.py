@@ -1,4 +1,3 @@
-
 import base64
 import io  # Para crear el Excel en memoria
 import re
@@ -9,6 +8,7 @@ import pandas as pd  # Para procesar los datos
 import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
 import streamlit as st
 import streamlit.components.v1 as components
+import msal  # Librería oficial de Microsoft para autenticación
 
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
@@ -35,30 +35,45 @@ def slugify(texto: str) -> str:
     return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
 
-# === NUEVA CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI ===
+# === CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI CON MSAL (ROPC) ===
 def obtener_token_powerbi():
-    """Obtiene un token de acceso OAuth2 para autenticarse con la API de Power BI."""
-    url_auth = "https://login.microsoftonline.com/common/oauth2/token"
+    """Obtiene un token de acceso OAuth2 seguro utilizando MSAL sin intercepción de MFA."""
+    tenant_id = "1fc53109-6600-4a1f-a6bc-7ddfd4b3ddcf"  # Id. de inquilino de Express San Silvestre
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    client_id = "23d8fec1-787b-475f-b38d-c8eac9e3da4a"  # Client ID nativo estándar de Power BI
     
-    # Datos de autenticación para la API global de Power BI usando st.secrets
-    cuerpo_auth = {
-        "grant_type": "password",
-        "scope": "openid",
-        "resource": "https://analysis.windows.net/powerbi/api",
-        "client_id": "23d8fec1-787b-475f-b38d-c8eac9e3da4a",  # Client ID nativo estándar de Power BI
-        "username": st.secrets["POWERBI_USER"],
-        "password": st.secrets["POWERBI_PASSWORD"]
-    }
+    # El alcance (scope) estándar requerido para interactuar con los datasets de Power BI
+    scopes = ["https://analysis.windows.net/powerbi/api/.default"]
     
     try:
-        respuesta = requests.post(url_auth, data=cuerpo_auth)
-        if respuesta.status_code == 200:
-            return respuesta.json().get("access_token")
+        app = msal.PublicClientApplication(
+            client_id,
+            authority=authority
+        )
+        
+        # Consultar primero si existe un token válido almacenado en el caché de la sesión
+        cuentas = app.get_accounts(username=st.secrets["POWERBI_USER"])
+        if cuentas:
+            token_resultado = app.acquire_token_silent(scopes, account=cuentas[0])
+            if token_resultado:
+                return token_resultado.get("access_token")
+        
+        # Flujo directo con usuario y contraseña (exclusión global exitosa de Security Defaults)
+        token_resultado = app.acquire_token_by_username_password(
+            username=st.secrets["POWERBI_USER"],
+            password=st.secrets["POWERBI_PASSWORD"],
+            scopes=scopes
+        )
+        
+        if "access_token" in token_resultado:
+            return token_resultado.get("access_token")
         else:
-            st.error(f"Error de autenticación con Microsoft: {respuesta.text}")
+            error_desc = token_resultado.get("error_description", "Error de autenticación desconocido")
+            st.error(f"Error de autenticación con Microsoft Entra ID: {error_desc}")
             return None
+            
     except Exception as e:
-        st.error(f"Error de red al intentar autenticar con Microsoft: {e}")
+        st.error(f"Error de red o configuración al intentar autenticar con MSAL: {e}")
         return None
 
 
@@ -78,7 +93,6 @@ def obtener_datos_liquidaciones_powerbi():
     }
     
     # Consulta DAX estructurada para traer el tablón de datos.
-    # NOTA: Ajusta los nombres exactos si difieren de tu modelView
     dax_query = {
         "queries": [
             {
@@ -309,11 +323,11 @@ def construir_carrusel_html(
     <div class="hero-carousel">
         {slides_html}
         <div class="hero-overlay"></div>
-        {'<div class="hero-dots">' + dots_html + '</div>' if mostrar_dots else ''}
+        {f'<div class="hero-dots">{dots_html}</div>' if mostrar_dots else ''}
         <div class="hero-content">
             <h2>{titulo}</h2>
             <p>{subtitulo}</p>
-            {'<div class="hero-kpis">' + kpis_html + '</div>' if kpis_html else ''}
+            {f'<div class="hero-kpis">{kpis_html}</div>' if kpis_html else ''}
         </div>
     </div>
 
