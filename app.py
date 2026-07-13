@@ -506,7 +506,7 @@ def obtener_credenciales():
     try:
         return st.secrets["auth"]["usuario"], st.secrets["auth"]["contrasena"]
     except Exception:
-        return "admin", "ess2026"
+        return "admin", "ess202626"
 
 
 def verificar_login(usuario, contrasena):
