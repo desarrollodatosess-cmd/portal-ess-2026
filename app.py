@@ -3,7 +3,6 @@ import io  # Para crear el Excel en memoria
 import re
 from pathlib import Path
 
-import numpy as np  # Para manejar la lógica de división entre cero de Pandas
 import pandas as pd  # Para procesar los datos
 import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
 import streamlit as st
@@ -70,6 +69,40 @@ def obtener_token_powerbi():
         return None
 
 
+def obtener_medidas_disponibles():
+    """Diagnóstico: lista los nombres EXACTOS de todas las medidas DAX definidas
+    en el modelo, para no tener que adivinarlos (ej. las medidas '%' que se ven
+    en la visual pero cuyo nombre real en el modelo puede ser distinto)."""
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    dax_query = {
+        "queries": [
+            {"query": 'EVALUATE SELECTCOLUMNS(INFO.MEASURES(), "Medida", [Name])'}
+        ]
+    }
+
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+        if respuesta.status_code == 200:
+            filas = respuesta.json()["results"][0]["tables"][0]["rows"]
+            medidas = [list(fila.values())[0] for fila in filas]
+            return sorted(medidas)
+        else:
+            st.error(f"Error al listar medidas: {respuesta.status_code} - {respuesta.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error al listar medidas: {e}")
+        return None
+
+
 def obtener_columnas_liquidaciones():
     """Diagnóstico: corre una consulta DAX mínima para listar los nombres REALES
     de las columnas de la tabla 'liquidaciones', tal como existen en el modelo.
@@ -86,7 +119,7 @@ def obtener_columnas_liquidaciones():
     }
     # TOPN(1, 'liquidaciones') trae una sola fila con TODAS las columnas de la
     # tabla tal cual se llaman en el modelo — no hace falta adivinar nombres.
-    dax_query = {"queries": [{"query": "EVALUATE TOPN(1, 'liquidaciones')"}]}
+    dax_query = {"queries": [{"query": "EVALUATE TOPN(1, Liquidaciones)"}]}
 
     try:
         respuesta = requests.post(url_query, headers=headers, json=dax_query)
@@ -104,7 +137,17 @@ def obtener_columnas_liquidaciones():
 
 
 def obtener_datos_liquidaciones_powerbi():
-    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX."""
+    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX.
+
+    Las columnas 'Folio', 'Nombre', 'CreadoEl', 'Creo', 'Ingresos' y 'Gastos'
+    son columnas reales de la tabla Liquidaciones. Los "Gasto ..." y
+    "Gastos Extras" / "Total de Gastos" son MEDIDAS del modelo, por eso se
+    referencian distinto: "Alias", [NombreMedida] (sin comillas de tabla).
+
+    NOTA: la medida 'gastos' es la que en la visual del reporte se ve como "%"
+    junto a 'Total de Gastos' — el nombre real en el modelo es literalmente
+    'gastos' (confirmado con el diagnóstico de medidas).
+    """
     token = obtener_token_powerbi()
     if not token:
         return None
@@ -123,16 +166,25 @@ def obtener_datos_liquidaciones_powerbi():
                 "query": """
                 EVALUATE
                 SUMMARIZECOLUMNS(
-                    'liquidaciones'[Folio],
-                    'liquidaciones'[Codigo],
-                    'liquidaciones'[Nombre],
-                    'liquidaciones'[CreadoEl],
-                    'liquidaciones'[Creo],
-                    'liquidaciones'[Ingresos],
-                    'liquidaciones'[Gastos_Extras],
-                    'liquidaciones'[Sobresueldos],
-                    'liquidaciones'[G_Pre_Aut],
-                    'liquidaciones'[G_Pre_Aut_OP]
+                    Liquidaciones[Folio],
+                    Liquidaciones[Nombre],
+                    Liquidaciones[CreadoEl],
+                    Liquidaciones[Creo],
+                    Liquidaciones[Ingresos],
+                    Liquidaciones[Gastos],
+                    "Gastos Extras", [Gastos Extras],
+                    "% Gastos Extras", [% Gastos Extras],
+                    "Total de Gastos", [Total de Gastos],
+                    "gastos", [gastos],
+                    "Gasto Compra de Llanta", [Gasto Compra de Llanta],
+                    "Gasto Movimientos Pendientes", [Gasto Movimientos Pendientes],
+                    "Gasto Talachas", [Gasto Talachas],
+                    "Gasto Refacciones", [Gasto Refacciones],
+                    "Gasto Supervisor", [Gasto Supervisor],
+                    "Gasto Transito", [Gasto Transito],
+                    "Gasto Gatas", [Gasto Gatas],
+                    "Gasto Guia", [Gasto Guia],
+                    "Gasto Transito Recuperable", [Gasto Transito Recuperable]
                 )
                 """
             }
@@ -146,23 +198,9 @@ def obtener_datos_liquidaciones_powerbi():
             filas = respuesta.json()['results'][0]['tables'][0]['rows']
             df = pd.DataFrame(filas)
 
+            # Limpia encabezados tipo 'Liquidaciones[Folio]' -> 'Folio'.
+            # Los alias de medidas (ej. 'Gastos Extras') ya vienen limpios.
             df.columns = [col.split('[')[-1].replace(']', '') for col in df.columns]
-
-            if 'Codigo' in df.columns:
-                df = df.rename(columns={'Codigo': 'Unidad'})
-
-            df['Gastos_OK'] = (
-                df.get('Gastos Extras', 0) +
-                df.get('Sobresueldos', 0) +
-                df.get('G_Pre_Aut', 0) +
-                df.get('G_Pre_Aut_OP', 0)
-            )
-
-            df['Porcentaje_Gastos_Extras'] = (df['Gastos Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
-            df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
-
-            df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
-            df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
 
             return df
         else:
@@ -627,14 +665,16 @@ else:
         st.markdown("### 📥 Extracción de Reporte Consolidado")
         st.write("Genera y descarga el archivo Excel optimizado con los datos actualizados de Power BI (corte 10:00 PM).")
 
-        col_a, col_b = st.columns([1, 1])
+        col_a, col_b, col_c = st.columns([1, 1, 1])
         with col_a:
             generar = st.button("Generar Reporte Excel")
         with col_b:
-            diagnosticar = st.button("🔍 Ver nombres reales de columnas")
+            diagnosticar_columnas = st.button("🔍 Ver columnas de la tabla")
+        with col_c:
+            diagnosticar_medidas = st.button("🔎 Ver medidas (DAX) disponibles")
 
-        if diagnosticar:
-            with st.spinner("Consultando la estructura de la tabla 'liquidaciones'..."):
+        if diagnosticar_columnas:
+            with st.spinner("Consultando la estructura de la tabla 'Liquidaciones'..."):
                 columnas = obtener_columnas_liquidaciones()
                 if columnas:
                     st.info("Estos son los nombres EXACTOS de las columnas en el modelo:")
@@ -644,6 +684,15 @@ else:
                         "La consulta funcionó pero la tabla no tiene filas para "
                         "inspeccionar sus columnas."
                     )
+
+        if diagnosticar_medidas:
+            with st.spinner("Consultando las medidas DAX del modelo..."):
+                medidas = obtener_medidas_disponibles()
+                if medidas:
+                    st.info("Estos son los nombres EXACTOS de las medidas en el modelo:")
+                    st.code("\n".join(medidas))
+                elif medidas == []:
+                    st.warning("El modelo no tiene medidas definidas (o la consulta no las alcanzó a ver).")
 
         # Botón para disparar la API de forma controlada
         if generar:
