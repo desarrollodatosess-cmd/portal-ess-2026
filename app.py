@@ -38,45 +38,68 @@ def slugify(texto: str) -> str:
 # === CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI CON MSAL (ROPC) ===
 def obtener_token_powerbi():
     """Obtiene un token de acceso OAuth2 seguro utilizando MSAL con un registro propio."""
-    # Usamos tu Tenant ID específico configurado en secrets, o 'organizations' por defecto
     tenant_id = st.secrets.get("POWERBI_TENANT_ID", "organizations")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
-    
-    # Tu nuevo Client ID personalizado de la App Registration en Azure
     client_id = st.secrets["POWERBI_CLIENT_ID"]
-    
-    # El alcance (scope) estándar requerido para interactuar con los datasets de Power BI
     scopes = ["https://analysis.windows.net/powerbi/api/.default"]
-    
+
     try:
-        app = msal.PublicClientApplication(
-            client_id,
-            authority=authority
-        )
-        
-        # Consultar primero si existe un token válido almacenado en el caché de la sesión
+        app = msal.PublicClientApplication(client_id, authority=authority)
+
         cuentas = app.get_accounts(username=st.secrets["POWERBI_USER"])
         if cuentas:
             token_resultado = app.acquire_token_silent(scopes, account=cuentas[0])
             if token_resultado:
                 return token_resultado.get("access_token")
-        
-        # Flujo directo ROPC con usuario y contraseña
+
         token_resultado = app.acquire_token_by_username_password(
             username=st.secrets["POWERBI_USER"],
             password=st.secrets["POWERBI_PASSWORD"],
-            scopes=scopes
+            scopes=scopes,
         )
-        
+
         if "access_token" in token_resultado:
             return token_resultado.get("access_token")
         else:
             error_desc = token_resultado.get("error_description", "Error de autenticación desconocido")
             st.error(f"Error de autenticación con Microsoft Entra ID: {error_desc}")
             return None
-            
+
     except Exception as e:
         st.error(f"Error de red o configuración al intentar autenticar con MSAL: {e}")
+        return None
+
+
+def obtener_columnas_liquidaciones():
+    """Diagnóstico: corre una consulta DAX mínima para listar los nombres REALES
+    de las columnas de la tabla 'liquidaciones', tal como existen en el modelo.
+    Úsala cuando la consulta principal falle con 'column cannot be found'."""
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    # TOPN(1, 'liquidaciones') trae una sola fila con TODAS las columnas de la
+    # tabla tal cual se llaman en el modelo — no hace falta adivinar nombres.
+    dax_query = {"queries": [{"query": "EVALUATE TOPN(1, 'liquidaciones')"}]}
+
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+        if respuesta.status_code == 200:
+            filas = respuesta.json()["results"][0]["tables"][0]["rows"]
+            if filas:
+                return list(filas[0].keys())
+            return []
+        else:
+            st.error(f"Error al listar columnas: {respuesta.status_code} - {respuesta.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error al listar columnas: {e}")
         return None
 
 
@@ -85,17 +108,15 @@ def obtener_datos_liquidaciones_powerbi():
     token = obtener_token_powerbi()
     if not token:
         return None
-        
-    # Identificador del modelo semántico (Dataset ID) obtenido de modelView
-    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92" 
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
     url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
-    
+
     headers = {
         "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    
-    # Consulta DAX estructurada para traer el tablón de datos.
+
     dax_query = {
         "queries": [
             {
@@ -117,40 +138,37 @@ def obtener_datos_liquidaciones_powerbi():
             }
         ]
     }
-    
+
     try:
         respuesta = requests.post(url_query, headers=headers, json=dax_query)
-        
+
         if respuesta.status_code == 200:
             filas = respuesta.json()['results'][0]['tables'][0]['rows']
             df = pd.DataFrame(filas)
-            
-            # Limpiar los encabezados: la API devuelve 'NombreTabla[NombreColumna]'
+
             df.columns = [col.split('[')[-1].replace(']', '') for col in df.columns]
-            
-            # Renombrar 'Codigo' a 'Unidad' si deseas mantener la misma estructura del Excel anterior
+
             if 'Codigo' in df.columns:
                 df = df.rename(columns={'Codigo': 'Unidad'})
-            
-            # --- PROCESAMIENTO PANDAS (Tus cálculos originales) ---
+
             df['Gastos_OK'] = (
-                df.get('Gastos Extras', 0) + 
-                df.get('Sobresueldos', 0) + 
-                df.get('G_Pre_Aut', 0) + 
+                df.get('Gastos Extras', 0) +
+                df.get('Sobresueldos', 0) +
+                df.get('G_Pre_Aut', 0) +
                 df.get('G_Pre_Aut_OP', 0)
             )
-            
+
             df['Porcentaje_Gastos_Extras'] = (df['Gastos Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
             df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
-            
+
             df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
             df['Porcentaje_Total_Gastos'] = df['Porcentaje_Total_Gastos'].fillna(0).round(2)
-            
+
             return df
         else:
             st.error(f"Error en la consulta de Power BI: {respuesta.status_code} - {respuesta.text}")
             return None
-            
+
     except Exception as e:
         st.error(f"Error al procesar la información de Power BI: {e}")
         return None
@@ -608,15 +626,32 @@ else:
         st.markdown("---")
         st.markdown("### 📥 Extracción de Reporte Consolidado")
         st.write("Genera y descarga el archivo Excel optimizado con los datos actualizados de Power BI (corte 10:00 PM).")
-        
+
+        col_a, col_b = st.columns([1, 1])
+        with col_a:
+            generar = st.button("Generar Reporte Excel")
+        with col_b:
+            diagnosticar = st.button("🔍 Ver nombres reales de columnas")
+
+        if diagnosticar:
+            with st.spinner("Consultando la estructura de la tabla 'liquidaciones'..."):
+                columnas = obtener_columnas_liquidaciones()
+                if columnas:
+                    st.info("Estos son los nombres EXACTOS de las columnas en el modelo:")
+                    st.code("\n".join(columnas))
+                elif columnas == []:
+                    st.warning(
+                        "La consulta funcionó pero la tabla no tiene filas para "
+                        "inspeccionar sus columnas."
+                    )
+
         # Botón para disparar la API de forma controlada
-        if st.button("Generar Reporte Excel"):
+        if generar:
             with st.spinner("Conectando con la nube de Microsoft y procesando métricas..."):
                 df_liq = obtener_datos_liquidaciones_powerbi()
 
                 if df_liq is not None and not df_liq.empty:
                     try:
-                        # Convertimos el DataFrame a un archivo Excel binario
                         output = io.BytesIO()
                         with pd.ExcelWriter(output, engine="openpyxl") as writer:
                             df_liq.to_excel(writer, index=False, sheet_name="Liquidaciones")
