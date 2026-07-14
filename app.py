@@ -108,7 +108,7 @@ def obtener_datos_liquidaciones_powerbi():
                     'liquidaciones'[CreadoEl],
                     'liquidaciones'[Creo],
                     'liquidaciones'[Ingresos],
-                    'liquidaciones'[Gastos Extras],
+                    'liquidaciones'[Gastos_Extras],
                     'liquidaciones'[Sobresueldos],
                     'liquidaciones'[G_Pre_Aut],
                     'liquidaciones'[G_Pre_Aut_OP]
