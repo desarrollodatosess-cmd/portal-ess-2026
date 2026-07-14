@@ -108,7 +108,7 @@ def obtener_datos_liquidaciones_powerbi():
                     'liquidaciones'[CreadoEl],
                     'liquidaciones'[Creo],
                     'liquidaciones'[Ingresos],
-                    'liquidaciones'[Gastos_Extras],
+                    'liquidaciones'[Gastos Extras],
                     'liquidaciones'[Sobresueldos],
                     'liquidaciones'[G_Pre_Aut],
                     'liquidaciones'[G_Pre_Aut_OP]
@@ -134,13 +134,13 @@ def obtener_datos_liquidaciones_powerbi():
             
             # --- PROCESAMIENTO PANDAS (Tus cálculos originales) ---
             df['Gastos_OK'] = (
-                df.get('Gastos_Extras', 0) + 
+                df.get('Gastos Extras', 0) + 
                 df.get('Sobresueldos', 0) + 
                 df.get('G_Pre_Aut', 0) + 
                 df.get('G_Pre_Aut_OP', 0)
             )
             
-            df['Porcentaje_Gastos_Extras'] = (df['Gastos_Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
+            df['Porcentaje_Gastos_Extras'] = (df['Gastos Extras'] / df['Ingresos'].replace(0, np.nan)) * 100
             df['Porcentaje_Gastos_Extras'] = df['Porcentaje_Gastos_Extras'].fillna(0).round(2)
             
             df['Porcentaje_Total_Gastos'] = (df['Gastos_OK'] / df['Ingresos'].replace(0, np.nan)) * 100
