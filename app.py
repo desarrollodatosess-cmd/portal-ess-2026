@@ -174,7 +174,7 @@ def obtener_datos_liquidaciones_powerbi():
                     Liquidaciones[Gastos],
                     "Gastos Extras", [Gastos Extras],
                     "% Gastos Extras", [% Gastos Extras],
-                    "Total de Gastos", [Total de Gastos],
+                    "Total de Gastos", [Gastos OK],
                     "gastos", [gastos],
                     "Gasto Compra de Llanta", [Gasto Compra de Llanta],
                     "Gasto Movimientos Pendientes", [Gasto Movimientos Pendientes],
