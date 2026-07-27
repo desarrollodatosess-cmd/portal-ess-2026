@@ -1,30 +1,768 @@
-# Esto NO se sube a GitHub. Es solo un ejemplo de lo que debes pegar
-# en Streamlit Cloud: tu app > Settings > Secrets.
+import base64
+import io  # Para crear el Excel en memoria
+import re
+from pathlib import Path
 
-# --- Conexión a la API de Power BI (Portals-ESS Reportes) ---
-POWERBI_TENANT_ID = "1fc53109-6a00-4a1f-a6bc-7ddfd4b3ddcf"
-POWERBI_CLIENT_ID = "fe23a732-047e-45b8-b617-b34f6ac298a3"
-POWERBI_USER = "cuenta_de_servicio@expresssansilvestre.com"
-POWERBI_PASSWORD = "clave_de_esa_cuenta"
+import pandas as pd  # Para procesar los datos
+import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
+import streamlit as st
+import streamlit.components.v1 as components
+import msal  # Librería oficial de Microsoft para autenticación
 
-# --- Usuarios del portal y las áreas que cada uno puede ver ---
-# "Inicio" siempre es visible para todos aunque no lo listes.
-# Los nombres de área deben coincidir EXACTO con las claves de opciones_menu
-# en el código: Capital Humano, Comercial, Liquidaciones, Operaciones,
-# Flotilla, Códigos de Falla.
+# Configuración principal de la página
+st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
 
-[usuarios.admin]
-contrasena = "CambiaEstaClaveSegura2026"
-areas = ["Capital Humano", "Comercial", "Liquidaciones", "Operaciones", "Flotilla", "Códigos de Falla"]
+# Inicializar estados de sesión esenciales
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "menu_seleccionado" not in st.session_state:
+    st.session_state.menu_seleccionado = "Inicio"
+if "areas_permitidas" not in st.session_state:
+    st.session_state.areas_permitidas = set()
 
-[usuarios.operaciones1]
-contrasena = "ClaveOperaciones2026"
-areas = ["Operaciones"]
 
-[usuarios.rh1]
-contrasena = "ClaveRH2026"
-areas = ["Capital Humano"]
+def slugify(texto: str) -> str:
+    """Convierte 'Capital Humano' -> 'capital_humano' para usarlo como key/clase CSS."""
+    texto = texto.lower()
+    for a, b in {
+        "á": "a",
+        "é": "e",
+        "í": "i",
+        "ó": "o",
+        "ú": "u",
+        "ñ": "n",
+    }.items():
+        texto = texto.replace(a, b)
+    return re.sub(r"[^a-z0-9]+", "_", texto).strip("_")
 
-[usuarios.liquidaciones1]
-contrasena = "ClaveLiq2026"
-areas = ["Liquidaciones"]
+
+# === CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI CON MSAL (ROPC) ===
+def obtener_token_powerbi():
+    """Obtiene un token de acceso OAuth2 seguro utilizando MSAL con un registro propio."""
+    tenant_id = st.secrets.get("POWERBI_TENANT_ID", "organizations")
+    authority = f"https://login.microsoftonline.com/{tenant_id}"
+    client_id = st.secrets["POWERBI_CLIENT_ID"]
+    scopes = ["https://analysis.windows.net/powerbi/api/.default"]
+
+    try:
+        app = msal.PublicClientApplication(client_id, authority=authority)
+
+        cuentas = app.get_accounts(username=st.secrets["POWERBI_USER"])
+        if cuentas:
+            token_resultado = app.acquire_token_silent(scopes, account=cuentas[0])
+            if token_resultado:
+                return token_resultado.get("access_token")
+
+        token_resultado = app.acquire_token_by_username_password(
+            username=st.secrets["POWERBI_USER"],
+            password=st.secrets["POWERBI_PASSWORD"],
+            scopes=scopes,
+        )
+
+        if "access_token" in token_resultado:
+            return token_resultado.get("access_token")
+        else:
+            error_desc = token_resultado.get("error_description", "Error de autenticación desconocido")
+            st.error(f"Error de autenticación con Microsoft Entra ID: {error_desc}")
+            return None
+
+    except Exception as e:
+        st.error(f"Error de red o configuración al intentar autenticar con MSAL: {e}")
+        return None
+
+
+def obtener_medidas_disponibles():
+    """Diagnóstico: lista los nombres EXACTOS de todas las medidas DAX definidas
+    en el modelo, para no tener que adivinarlos (ej. las medidas '%' que se ven
+    en la visual pero cuyo nombre real en el modelo puede ser distinto)."""
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    dax_query = {
+        "queries": [
+            {"query": 'EVALUATE SELECTCOLUMNS(INFO.MEASURES(), "Medida", [Name])'}
+        ]
+    }
+
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+        if respuesta.status_code == 200:
+            filas = respuesta.json()["results"][0]["tables"][0]["rows"]
+            medidas = [list(fila.values())[0] for fila in filas]
+            return sorted(medidas)
+        else:
+            st.error(f"Error al listar medidas: {respuesta.status_code} - {respuesta.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error al listar medidas: {e}")
+        return None
+
+
+def obtener_columnas_liquidaciones():
+    """Diagnóstico: corre una consulta DAX mínima para listar los nombres REALES
+    de las columnas de la tabla 'liquidaciones', tal como existen en el modelo.
+    Úsala cuando la consulta principal falle con 'column cannot be found'."""
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+    # TOPN(1, 'liquidaciones') trae una sola fila con TODAS las columnas de la
+    # tabla tal cual se llaman en el modelo — no hace falta adivinar nombres.
+    dax_query = {"queries": [{"query": "EVALUATE TOPN(1, Liquidaciones)"}]}
+
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+        if respuesta.status_code == 200:
+            filas = respuesta.json()["results"][0]["tables"][0]["rows"]
+            if filas:
+                return list(filas[0].keys())
+            return []
+        else:
+            st.error(f"Error al listar columnas: {respuesta.status_code} - {respuesta.text}")
+            return None
+    except Exception as e:
+        st.error(f"Error al listar columnas: {e}")
+        return None
+
+
+def obtener_datos_liquidaciones_powerbi():
+    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX.
+
+    Las columnas 'Folio', 'Nombre', 'CreadoEl', 'Creo', 'Ingresos' y 'Gastos'
+    son columnas reales de la tabla Liquidaciones. Los "Gasto ..." y
+    "Gastos Extras" / "Total de Gastos" son MEDIDAS del modelo, por eso se
+    referencian distinto: "Alias", [NombreMedida] (sin comillas de tabla).
+
+    NOTA: la medida 'gastos' es la que en la visual del reporte se ve como "%"
+    junto a 'Total de Gastos' — el nombre real en el modelo es literalmente
+    'gastos' (confirmado con el diagnóstico de medidas).
+    """
+    token = obtener_token_powerbi()
+    if not token:
+        return None
+
+    dataset_id = "553a55c1-c435-469e-babf-670d6c80df92"
+    url_query = f"https://api.powerbi.com/v1.0/myorg/datasets/{dataset_id}/executeQueries"
+
+    headers = {
+        "Authorization": f"Bearer {token}",
+        "Content-Type": "application/json",
+    }
+
+    dax_query = {
+        "queries": [
+            {
+                "query": """
+                EVALUATE
+                SUMMARIZECOLUMNS(
+                    Liquidaciones[Folio],
+                    Liquidaciones[Nombre],
+                    Liquidaciones[CreadoEl],
+                    Liquidaciones[Creo],
+                    Liquidaciones[Ingresos],
+                    Liquidaciones[Gastos],
+                    "Gastos Extras", [Gastos Extras],
+                    "% Gastos Extras", [% Gastos Extras],
+                    "Total de Gastos", [Gastos OK],
+                    "% Total de Gastos", [gastos],
+                    "Gasto Compra de Llanta", [Gasto Compra de Llanta],
+                    "Gasto Movimientos Pendientes", [Gasto Movimientos Pendientes],
+                    "Gasto Talachas", [Gasto Talachas],
+                    "Gasto Refacciones", [Gasto Refacciones],
+                    "Gasto Supervisor", [Gasto Supervisor],
+                    "Gasto Transito", [Gasto Transito],
+                    "Gasto Gatas", [Gasto Gatas],
+                    "Gasto Guia", [Gasto Guia],
+                    "Gasto Transito Recuperable", [Gasto Transito Recuperable]
+                )
+                """
+            }
+        ]
+    }
+
+    try:
+        respuesta = requests.post(url_query, headers=headers, json=dax_query)
+
+        if respuesta.status_code == 200:
+            filas = respuesta.json()['results'][0]['tables'][0]['rows']
+            df = pd.DataFrame(filas)
+
+            # Limpia encabezados tipo 'Liquidaciones[Folio]' -> 'Folio'.
+            # Los alias de medidas (ej. 'Gastos Extras') ya vienen limpios.
+            df.columns = [col.split('[')[-1].replace(']', '') for col in df.columns]
+
+            return df
+        else:
+            st.error(f"Error en la consulta de Power BI: {respuesta.status_code} - {respuesta.text}")
+            return None
+
+    except Exception as e:
+        st.error(f"Error al procesar la información de Power BI: {e}")
+        return None
+
+
+# === CONFIGURACIÓN DEL CARRUSEL DE INICIO ===
+RUTA_CARRUSEL = "assets/carousel"
+
+
+def imagen_a_base64(ruta: str) -> str:
+    """Lee una imagen local y la convierte en data-URI base64 para incrustarla en HTML."""
+    extension = Path(ruta).suffix.replace(".", "").lower()
+    extension = "jpeg" if extension == "jpg" else extension
+    with open(ruta, "rb") as archivo:
+        datos = base64.b64encode(archivo.read()).decode()
+    return f"data:image/{extension};base64,{datos}"
+
+
+def obtener_imagenes_carrusel(carpeta: str) -> list:
+    """Devuelve, en base64, todas las imágenes válidas encontradas en `carpeta`."""
+    carpeta_path = Path(carpeta)
+    if not carpeta_path.exists():
+        return []
+    extensiones_validas = {".jpg", ".jpeg", ".png", ".webp"}
+    archivos = sorted(
+        p for p in carpeta_path.iterdir() if p.suffix.lower() in extensiones_validas
+    )
+    imagenes = []
+    for archivo in archivos:
+        try:
+            imagenes.append(imagen_a_base64(str(archivo)))
+        except Exception:
+            continue
+    return imagenes
+
+
+# === CONFIGURACIÓN DE TABLEROS POWER BI ===
+REPORTES_POWERBI = {
+    "Capital Humano": "https://app.powerbi.com/view?r=eyJrIjoiNmU0MTg2NjUtMGQ1My00MjU4LWE5ODgtZTBjY2NjMTE0YjYxIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=1528e6a9ffef26f42f39",
+    "Comercial": "https://app.powerbi.com/view?r=eyJrIjoiMDM4ZjMwN2EtOThlOS00ODI5LWEyNTEtOGE2NjhjZDQ2MTk5IiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=36d5c229a0939c8234c4",
+    "Liquidaciones": "https://app.powerbi.com/view?r=eyJrIjoiMjlhOTNhYTAtOGI3OC00YTg2LTkxMTMtYjM5YmI4NmM5MDNhIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=18f7891f4ced9ea3a7e9",
+    "Operaciones": "https://app.powerbi.com/view?r=eyJrIjoiZDZiYjIxMGUtNDlmOS00MGVhLTgwODYtMGE5NGJiNzhmMzE3IiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=7c18946f915bd493ad4b",
+    "Flotilla": "https://app.powerbi.com/view?r=eyJrIjoiNDUzMDUwNjAtZDRiMy00ZjQwLWI0ZGEtMGM3NTVmNWY1YTZmIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9",
+    "Códigos de Falla": "https://app.powerbi.com/view?r=eyJrIjoiOTBhZTcxMjQtMWQwOS00OTE4LTgzNGUtMDgzMWYyOTU3YTgwIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9",
+}
+
+
+def mostrar_tablero_powerbi(url: str, alto: int = 650):
+    if not url:
+        st.markdown(
+            '<div class="info-card-custom">⚠️ Este tablero todavía no tiene una URL '
+            "de Power BI configurada. Pégala en el diccionario "
+            "<code>REPORTES_POWERBI</code> dentro del código.</div>",
+            unsafe_allow_html=True,
+        )
+        return
+    components.iframe(url, height=alto, scrolling=True)
+
+
+def construir_carrusel_html(
+    imagenes_b64, titulo, subtitulo, kpis=None, alto=380, intervalo_ms=4500
+):
+    if imagenes_b64:
+        slides_html = "".join(
+            f'<div class="hero-slide{" active" if i == 0 else ""}" '
+            f"style=\"background-image:url('{img}')\"></div>"
+            for i, img in enumerate(imagenes_b64)
+        )
+        dots_html = "".join(
+            f'<span class="{"active" if i == 0 else ""}"></span>'
+            for i in range(len(imagenes_b64))
+        )
+        mostrar_dots = len(imagenes_b64) > 1
+    else:
+        slides_html = '<div class="hero-slide active sin-imagen"></div>'
+        dots_html = ""
+        mostrar_dots = False
+
+    kpis_html = ""
+    if kpis:
+        kpis_html = "".join(
+            f'<div class="kpi-item"><div class="kpi-num">{num}</div>'
+            f'<div class="kpi-label">{label}</div></div>'
+            for num, label in kpis
+        )
+
+    return f"""
+    <style>
+        * {{ box-sizing: border-box; font-family: 'Segoe UI', Arial, sans-serif; }}
+        body {{ margin: 0; }}
+        .hero-carousel {{
+            position: relative;
+            width: 100%;
+            height: {alto}px;
+            border-radius: 18px;
+            overflow: hidden;
+            box-shadow: 0px 12px 30px rgba(20, 20, 60, 0.25);
+        }}
+        .hero-slide {{
+            position: absolute;
+            inset: 0;
+            background-size: cover;
+            background-position: center;
+            opacity: 0;
+            transition: opacity 1.4s ease-in-out;
+        }}
+        .hero-slide.active {{ opacity: 1; }}
+        .hero-slide.sin-imagen {{
+            background: linear-gradient(135deg, #12123A 0%, #2A2E8F 55%, #4B4FE8 100%);
+        }}
+        .hero-overlay {{
+            position: absolute;
+            inset: 0;
+            background: linear-gradient(180deg, rgba(8,8,35,0.20) 0%, rgba(6,6,28,0.88) 100%);
+        }}
+        .hero-dots {{
+            position: absolute;
+            top: 22px;
+            right: 26px;
+            z-index: 2;
+            display: flex;
+            gap: 7px;
+        }}
+        .hero-dots span {{
+            width: 7px;
+            height: 7px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.35);
+            transition: background 0.3s ease;
+        }}
+        .hero-dots span.active {{ background: #FFFFFF; }}
+        .hero-content {{
+            position: absolute;
+            left: 42px;
+            right: 42px;
+            bottom: 32px;
+            z-index: 2;
+            color: #FFFFFF;
+        }}
+        .hero-content h2 {{
+            font-size: 2.1rem;
+            font-weight: 800;
+            letter-spacing: -0.5px;
+            margin: 0 0 8px 0;
+            text-shadow: 0px 2px 10px rgba(0,0,0,0.35);
+        }}
+        .hero-content p {{
+            font-size: 0.98rem;
+            color: rgba(255,255,255,0.85);
+            margin: 0 0 22px 0;
+            max-width: 620px;
+            line-height: 1.5;
+        }}
+        .hero-kpis {{
+            display: flex;
+            gap: 40px;
+            border-top: 1px solid rgba(255,255,255,0.18);
+            padding-top: 16px;
+        }}
+        .kpi-num {{
+            font-size: 1.35rem;
+            font-weight: 800;
+        }}
+        .kpi-label {{
+            font-size: 0.7rem;
+            color: rgba(255,255,255,0.65);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-top: 2px;
+        }}
+    </style>
+
+    <div class="hero-carousel">
+        {slides_html}
+        <div class="hero-overlay"></div>
+        {f'<div class="hero-dots">{dots_html}</div>' if mostrar_dots else ''}
+        <div class="hero-content">
+            <h2>{titulo}</h2>
+            <p>{subtitulo}</p>
+            {f'<div class="hero-kpis">{kpis_html}</div>' if kpis_html else ''}
+        </div>
+    </div>
+
+    <script>
+        const slides = document.querySelectorAll('.hero-slide');
+        const dots = document.querySelectorAll('.hero-dots span');
+        let idx = 0;
+        if (slides.length > 1) {{
+            setInterval(() => {{
+                slides[idx].classList.remove('active');
+                if (dots[idx]) dots[idx].classList.remove('active');
+                idx = (idx + 1) % slides.length;
+                slides[idx].classList.add('active');
+                if (dots[idx]) dots[idx].classList.add('active');
+            }}, {intervalo_ms});
+        }}
+    </script>
+    """
+
+
+# === INYECCIÓN CSS ULTRA-ESTRICTA Y GLOBAL ===
+slug_seleccionado = slugify(st.session_state.menu_seleccionado)
+
+st.markdown(
+    f"""
+    <style>
+        [data-testid="stSidebar"] {{
+            background-color: #0E0E3A !important;
+        }}
+        [data-testid="stSidebarCollapseButton"] button {{
+            background-color: rgba(255, 255, 255, 0.10) !important;
+            border-radius: 8px !important;
+            opacity: 1 !important;
+        }}
+        [data-testid="stSidebarCollapseButton"] svg {{
+            fill: #FFFFFF !important;
+            opacity: 1 !important;
+            width: 22px !important;
+            height: 22px !important;
+        }}
+        [data-testid="stSidebarCollapseButton"] button:hover {{
+            background-color: rgba(255, 255, 255, 0.2) !important;
+        }}
+        [data-testid="stSidebarContent"] {{
+            display: flex !important;
+            flex-direction: column !important;
+            height: 100vh !important;
+            padding-top: 10px !important;
+            padding-bottom: 20px !important;
+        }}
+        .menu-titulo-custom {{
+            color: rgba(255, 255, 255, 0.35) !important;
+            font-size: 0.75rem !important;
+            font-weight: 700 !important;
+            text-transform: uppercase !important;
+            letter-spacing: 1.5px !important;
+            margin: 10px 0 10px 14px !important;
+            display: block !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stButton"] button {{
+            background-color: transparent !important;
+            border: none !important;
+            color: #B7B9D6 !important;
+            width: 100% !important;
+            text-align: left !important;
+            padding: 10px 14px !important;
+            border-radius: 10px !important;
+            margin-bottom: 2px !important;
+            font-size: 0.92rem !important;
+            font-weight: 500 !important;
+            display: flex !important;
+            align-items: center !important;
+            justify-content: flex-start !important;
+            gap: 10px !important;
+            transition: background-color 0.2s ease, color 0.2s ease !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stButton"] button p,
+        [data-testid="stSidebar"] [data-testid="stButton"] button span,
+        [data-testid="stSidebar"] [data-testid="stButton"] button div {{
+            color: inherit !important;
+            font-size: inherit !important;
+            font-weight: inherit !important;
+        }}
+        [data-testid="stSidebar"] [data-testid="stButton"] button:hover {{
+            background-color: rgba(255, 255, 255, 0.07) !important;
+            color: #FFFFFF !important;
+        }}
+        .st-key-btn_{slug_seleccionado} button {{
+            background-color: #4B4FE8 !important;
+            color: #FFFFFF !important;
+            font-weight: 600 !important;
+            box-shadow: 0px 4px 10px rgba(75, 79, 232, 0.35) !important;
+        }}
+        .sidebar-divider {{
+            border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+            margin: 8px 14px 6px 14px !important;
+        }}
+        .sidebar-leyenda {{
+            color: rgba(255, 255, 255, 0.30) !important;
+            font-size: 0.7rem !important;
+            font-weight: 600 !important;
+            letter-spacing: 0.5px !important;
+            text-align: center !important;
+            margin: 0 0 4px 0 !important;
+            display: block !important;
+        }}
+        .sidebar-bottom-container {{
+            margin-top: auto !important;
+            display: flex !important;
+            flex-direction: column !important;
+        }}
+        .sidebar-bottom-spacer {{
+            flex-grow: 1 !important;
+            min-height: 24px !important;
+        }}
+        .sidebar-bottom-container [data-testid="stButton"] button:hover {{
+            background-color: rgba(211, 47, 47, 0.18) !important;
+            color: #FF6B6B !important;
+        }}
+        .stTextInput input {{
+            background-color: #FFFFFF !important;
+            color: #1A1A1A !important;
+            border: 1px solid #CCCCCC !important;
+        }}
+        .stTextInput label {{
+            color: #1A1A1A !important;
+        }}
+        [data-testid="stAppViewContainer"] {{
+            background-color: #F3F4FA !important;
+        }}
+        [data-testid="stHeader"] {{
+            background-color: transparent !important;
+        }}
+        .block-container {{
+            padding-top: 2.2rem !important;
+            padding-left: 3rem !important;
+            padding-right: 3rem !important;
+            max-width: 1180px !important;
+        }}
+        h1 {{
+            color: #14153A !important;
+            font-weight: 800 !important;
+            letter-spacing: -0.5px !important;
+        }}
+        .subtitulo-portal {{
+            color: #5B5E7A !important;
+            font-size: 1.02rem !important;
+            margin-top: -10px !important;
+            margin-bottom: 1.4rem !important;
+        }}
+        h3 {{
+            color: #1E1F45 !important;
+            font-weight: 700 !important;
+        }}
+        .info-card-custom {{
+            background-color: #FFFFFF !important;
+            border-left: 4px solid #4B4FE8 !important;
+            border-radius: 10px !important;
+            padding: 16px 20px !important;
+            box-shadow: 0px 6px 18px rgba(20, 20, 60, 0.06) !important;
+            color: #33354D !important;
+            font-size: 0.92rem !important;
+            line-height: 1.55 !important;
+            margin-top: 1rem !important;
+        }}
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
+
+# Lista de todas las áreas que existen en el portal (se usa como respaldo y
+# como referencia para el usuario admin de pruebas locales).
+TODAS_LAS_AREAS = [
+    "Inicio",
+    "Capital Humano",
+    "Comercial",
+    "Liquidaciones",
+    "Operaciones",
+    "Flotilla",
+    "Códigos de Falla",
+]
+
+
+def obtener_usuarios():
+    """Devuelve el diccionario {usuario: {contrasena, areas}} leído desde
+    st.secrets (nunca escrito en el código). Cada usuario solo ve, en el menú
+    lateral, las áreas listadas en su propio 'areas'.
+
+    Si no hay secrets configurados (ej. pruebas en tu máquina), cae en un
+    usuario 'admin' de respaldo con acceso a todo — reemplázalo en producción
+    configurando [usuarios.xxx] en Streamlit Cloud > Settings > Secrets."""
+    try:
+        return st.secrets["usuarios"]
+    except Exception:
+        return {"admin": {"contrasena": "ess202626", "areas": TODAS_LAS_AREAS}}
+
+
+def verificar_login(usuario, contrasena):
+    usuarios = obtener_usuarios()
+    datos_usuario = usuarios.get(usuario)
+    if datos_usuario and contrasena == datos_usuario["contrasena"]:
+        st.session_state.autenticado = True
+        st.session_state.usuario_actual = usuario
+        # "Inicio" siempre visible para todos, aunque no esté listada explícitamente.
+        areas_usuario = set(datos_usuario.get("areas", []))
+        areas_usuario.add("Inicio")
+        st.session_state.areas_permitidas = areas_usuario
+        st.success("¡Acceso concedido!")
+        st.rerun()
+    else:
+        st.error("Usuario o contraseña incorrectos")
+
+
+# Vista de Control de Acceso (Login)
+if not st.session_state.autenticado:
+    st.title("🔒 Control de Acceso - Portal ESS")
+    col1, col2 = st.columns([1, 2])
+    with col1:
+        usuario_ingresado = st.text_input("Usuario")
+        contrasena_ingresada = st.text_input("Contraseña", type="password")
+        if st.button("Ingresar"):
+            verificar_login(usuario_ingresado, contrasena_ingresada)
+
+# Vista Principal del Portal (Autenticado)
+else:
+    st.sidebar.markdown(
+        '<span class="menu-titulo-custom">Módulos de Análisis</span>',
+        unsafe_allow_html=True,
+    )
+
+    opciones_menu = {
+        "Inicio": ("🏠", "Inicio"),
+        "Capital Humano": ("👥", "Capital Humano"),
+        "Comercial": ("💼", "Comercial y Ventas"),
+        "Liquidaciones": ("🧮", "Liquidaciones"),
+        "Operaciones": ("⚙️", "Operaciones"),
+        "Flotilla": ("🚛", "Flotilla y Activos"),
+        "Códigos de Falla": ("⚠️", "Códigos de Falla"),
+    }
+
+    for clave, (icono, etiqueta) in opciones_menu.items():
+        if clave not in st.session_state.get("areas_permitidas", {"Inicio"}):
+            continue  # Este usuario no tiene permiso para ver esta área.
+        slug = slugify(clave)
+        if st.sidebar.button(f"{icono}  {etiqueta}", key=f"btn_{slug}"):
+            st.session_state.menu_seleccionado = clave
+            st.rerun()
+
+    # Barra lateral - Contenedor inferior
+    st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
+    st.sidebar.markdown('<span class="sidebar-leyenda">Desarrollo De Datos</span>', unsafe_allow_html=True)
+    st.sidebar.markdown('<div class="sidebar-bottom-spacer"></div>', unsafe_allow_html=True)
+    if st.sidebar.button("🚪  Cerrar Sesión", key="btn_logout"):
+        st.session_state.autenticado = False
+        st.session_state.menu_seleccionado = "Inicio"
+        st.session_state.areas_permitidas = set()
+        st.rerun()
+    st.sidebar.markdown("</div>", unsafe_allow_html=True)
+
+    # === Área Principal de Contenidos ===
+    st.title("Express San Silvestre")
+    st.markdown(
+        '<p class="subtitulo-portal">Bienvenido al centro de mando de datos de la organización.</p>',
+        unsafe_allow_html=True,
+    )
+
+    area = st.session_state.menu_seleccionado
+
+    # Candado de seguridad: si por alguna razón el área guardada en sesión ya
+    # no está permitida para este usuario (ej. cambió de rol), regresa a Inicio.
+    if area not in st.session_state.get("areas_permitidas", {"Inicio"}):
+        st.session_state.menu_seleccionado = "Inicio"
+        area = "Inicio"
+
+    if area == "Inicio":
+        imagenes_hero = obtener_imagenes_carrusel(RUTA_CARRUSEL)
+        html_hero = construir_carrusel_html(
+            imagenes_b64=imagenes_hero,
+            titulo="Bienvenido al Portal de BI - ESS",
+            subtitulo="Selecciona un módulo en la barra lateral para inicializar los tableros analíticos.",
+        )
+        components.html(html_hero, height=400)
+
+        st.markdown(
+            """
+            <div class="info-card-custom">
+                Nota corporativa: Para la descarga o extracción de registros optimizados 
+                con métricas DAX, localice las herramientas de exportación dispuestas en 
+                la base de cada sección correspondiente.
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+
+    elif area == "Capital Humano":
+        st.subheader("👥 Indicadores de Capital Humano")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Capital Humano"])
+
+    elif area == "Comercial":
+        st.subheader("💼 Tablero Comercial y Ventas")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Comercial"])
+
+    elif area == "Liquidaciones":
+        st.subheader("🧮 Módulo de Liquidaciones")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Liquidaciones"])
+
+        # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE LA API DE POWER BI ---
+        st.markdown("---")
+        st.markdown("### 📥 Extracción de Reporte Consolidado")
+        st.write("Genera y descarga el archivo Excel optimizado con los datos actualizados de Power BI (corte 10:00 PM).")
+
+        col_a, col_b, col_c = st.columns([1, 1, 1])
+        with col_a:
+            generar = st.button("Generar Reporte Excel")
+        with col_b:
+            diagnosticar_columnas = st.button("🔍 Ver columnas de la tabla")
+        with col_c:
+            diagnosticar_medidas = st.button("🔎 Ver medidas (DAX) disponibles")
+
+        if diagnosticar_columnas:
+            with st.spinner("Consultando la estructura de la tabla 'Liquidaciones'..."):
+                columnas = obtener_columnas_liquidaciones()
+                if columnas:
+                    st.info("Estos son los nombres EXACTOS de las columnas en el modelo:")
+                    st.code("\n".join(columnas))
+                elif columnas == []:
+                    st.warning(
+                        "La consulta funcionó pero la tabla no tiene filas para "
+                        "inspeccionar sus columnas."
+                    )
+
+        if diagnosticar_medidas:
+            with st.spinner("Consultando las medidas DAX del modelo..."):
+                medidas = obtener_medidas_disponibles()
+                if medidas:
+                    st.info("Estos son los nombres EXACTOS de las medidas en el modelo:")
+                    st.code("\n".join(medidas))
+                elif medidas == []:
+                    st.warning("El modelo no tiene medidas definidas (o la consulta no las alcanzó a ver).")
+
+        # Botón para disparar la API de forma controlada
+        if generar:
+            with st.spinner("Conectando con la nube de Microsoft y procesando métricas..."):
+                df_liq = obtener_datos_liquidaciones_powerbi()
+
+                if df_liq is not None and not df_liq.empty:
+                    try:
+                        output = io.BytesIO()
+                        with pd.ExcelWriter(output, engine="openpyxl") as writer:
+                            df_liq.to_excel(writer, index=False, sheet_name="Liquidaciones")
+                        excel_data = output.getvalue()
+
+                        st.success("¡Datos procesados exitosamente!")
+                        st.download_button(
+                            label="📥 Descargar Detalle de Liquidaciones en Excel (.xlsx)",
+                            data=excel_data,
+                            file_name="Detalle_Liquidaciones_Operadores.xlsx",
+                            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        )
+                    except Exception as e:
+                        st.error(f"Error al generar el archivo Excel: {e}")
+                else:
+                    st.error("No se pudieron extraer los registros desde la API de Power BI Cloud.")
+
+    elif area == "Operaciones":
+        st.subheader("⚙️ Control de Operaciones")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Operaciones"])
+
+    elif area == "Flotilla":
+        st.subheader("🚛 Gestión de Flotilla y Activos")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Flotilla"])
+
+    elif area == "Códigos de Falla":
+        st.subheader("⚠️ Análisis de Códigos de Falla")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Códigos de Falla"])
