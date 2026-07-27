@@ -604,6 +604,9 @@ if not st.session_state.autenticado:
 
 # --- VISTA PRINCIPAL (AUTENTICADO) ---
 else:
+    # Muestra el logo de la empresa subido en la raíz como images.png
+    st.sidebar.image("images.png", use_container_width=True)
+
     st.sidebar.markdown(
         '<span class="menu-titulo-custom">Módulos de Análisis</span>',
         unsafe_allow_html=True,
