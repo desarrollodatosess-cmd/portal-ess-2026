@@ -613,6 +613,19 @@ if not st.session_state.autenticado:
         if st.button("Ingresar"):
             verificar_login(usuario_ingresado, contrasena_ingresada)
 
+    # --- DIAGNÓSTICO TEMPORAL (quitar cuando ya funcione el login) ---
+    # Nunca muestra contraseñas, solo confirma qué usuarios detecta el
+    # sistema desde st.secrets, para descartar typos o errores de formato.
+    with st.expander("🔧 Diagnóstico (temporal)"):
+        try:
+            usuarios_detectados = list(st.secrets["usuarios"].keys())
+            st.write("Usuarios detectados en Secrets:", usuarios_detectados)
+        except Exception as e:
+            st.error(
+                f"No se encontró la sección [usuarios] en Secrets, o hay un "
+                f"error de formato. Detalle técnico: {e}"
+            )
+
 # Vista Principal del Portal (Autenticado)
 else:
     st.sidebar.markdown(
