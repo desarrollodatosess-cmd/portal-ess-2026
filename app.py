@@ -604,8 +604,10 @@ if not st.session_state.autenticado:
 
 # --- VISTA PRINCIPAL (AUTENTICADO) ---
 else:
-    # Muestra el logo de la empresa subido en la raíz como images.png
-    st.sidebar.image("images.png", use_container_width=True)
+    # Muestra el logo de la empresa centrado y en tamaño reducido
+    col_logo1, col_logo2, col_logo3 = st.sidebar.columns([1, 2, 1])
+    with col_logo2:
+        st.image("images.png", use_container_width=True)
 
     st.sidebar.markdown(
         '<span class="menu-titulo-custom">Módulos de Análisis</span>',
