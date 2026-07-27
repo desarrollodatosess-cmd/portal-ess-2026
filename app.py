@@ -1,13 +1,15 @@
+# Archivo: app.py
+
 import base64
-import io  # Para crear el Excel en memoria
+import io
 import re
 from pathlib import Path
 
-import pandas as pd  # Para procesar los datos
-import requests  # Conexión directa a la API de Power BI sin drivers ni VPN
+import msal  # Librería oficial de Microsoft para autenticación
+import pandas as pd
+import requests
 import streamlit as st
 import streamlit.components.v1 as components
-import msal  # Librería oficial de Microsoft para autenticación
 
 # Configuración principal de la página
 st.set_page_config(page_title="Portal de BI - ESS", page_icon="🚀", layout="wide")
@@ -38,7 +40,7 @@ def slugify(texto: str) -> str:
 
 # === CONFIGURACIÓN DE CONEXIÓN A LA API DE POWER BI CON MSAL (ROPC) ===
 def obtener_token_powerbi():
-    """Obtiene un token de acceso OAuth2 seguro utilizando MSAL con un registro propio."""
+    """Obtiene un token de acceso OAuth2 seguro utilizando MSAL leyendo de st.secrets."""
     tenant_id = st.secrets.get("POWERBI_TENANT_ID", "organizations")
     authority = f"https://login.microsoftonline.com/{tenant_id}"
     client_id = st.secrets["POWERBI_CLIENT_ID"]
@@ -62,7 +64,9 @@ def obtener_token_powerbi():
         if "access_token" in token_resultado:
             return token_resultado.get("access_token")
         else:
-            error_desc = token_resultado.get("error_description", "Error de autenticación desconocido")
+            error_desc = token_resultado.get(
+                "error_description", "Error de autenticación desconocido"
+            )
             st.error(f"Error de autenticación con Microsoft Entra ID: {error_desc}")
             return None
 
@@ -72,9 +76,7 @@ def obtener_token_powerbi():
 
 
 def obtener_medidas_disponibles():
-    """Diagnóstico: lista los nombres EXACTOS de todas las medidas DAX definidas
-    en el modelo, para no tener que adivinarlos (ej. las medidas '%' que se ven
-    en la visual pero cuyo nombre real en el modelo puede ser distinto)."""
+    """Diagnóstico: lista los nombres EXACTOS de todas las medidas DAX definidas en el modelo."""
     token = obtener_token_powerbi()
     if not token:
         return None
@@ -106,9 +108,7 @@ def obtener_medidas_disponibles():
 
 
 def obtener_columnas_liquidaciones():
-    """Diagnóstico: corre una consulta DAX mínima para listar los nombres REALES
-    de las columnas de la tabla 'liquidaciones', tal como existen en el modelo.
-    Úsala cuando la consulta principal falle con 'column cannot be found'."""
+    """Diagnóstico: corre una consulta DAX mínima para listar los nombres REALES de las columnas."""
     token = obtener_token_powerbi()
     if not token:
         return None
@@ -119,8 +119,6 @@ def obtener_columnas_liquidaciones():
         "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
-    # TOPN(1, 'liquidaciones') trae una sola fila con TODAS las columnas de la
-    # tabla tal cual se llaman en el modelo — no hace falta adivinar nombres.
     dax_query = {"queries": [{"query": "EVALUATE TOPN(1, Liquidaciones)"}]}
 
     try:
@@ -139,17 +137,7 @@ def obtener_columnas_liquidaciones():
 
 
 def obtener_datos_liquidaciones_powerbi():
-    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX.
-
-    Las columnas 'Folio', 'Nombre', 'CreadoEl', 'Creo', 'Ingresos' y 'Gastos'
-    son columnas reales de la tabla Liquidaciones. Los "Gasto ..." y
-    "Gastos Extras" / "Total de Gastos" son MEDIDAS del modelo, por eso se
-    referencian distinto: "Alias", [NombreMedida] (sin comillas de tabla).
-
-    NOTA: la medida 'gastos' es la que en la visual del reporte se ve como "%"
-    junto a 'Total de Gastos' — el nombre real en el modelo es literalmente
-    'gastos' (confirmado con el diagnóstico de medidas).
-    """
+    """Extrae la tabla de liquidaciones desde el Dataset de Power BI usando DAX."""
     token = obtener_token_powerbi()
     if not token:
         return None
@@ -197,13 +185,9 @@ def obtener_datos_liquidaciones_powerbi():
         respuesta = requests.post(url_query, headers=headers, json=dax_query)
 
         if respuesta.status_code == 200:
-            filas = respuesta.json()['results'][0]['tables'][0]['rows']
+            filas = respuesta.json()["results"][0]["tables"][0]["rows"]
             df = pd.DataFrame(filas)
-
-            # Limpia encabezados tipo 'Liquidaciones[Folio]' -> 'Folio'.
-            # Los alias de medidas (ej. 'Gastos Extras') ya vienen limpios.
-            df.columns = [col.split('[')[-1].replace(']', '') for col in df.columns]
-
+            df.columns = [col.split("[")[-1].replace("]", "") for col in df.columns]
             return df
         else:
             st.error(f"Error en la consulta de Power BI: {respuesta.status_code} - {respuesta.text}")
@@ -219,7 +203,7 @@ RUTA_CARRUSEL = "assets/carousel"
 
 
 def imagen_a_base64(ruta: str) -> str:
-    """Lee una imagen local y la convierte en data-URI base64 para incrustarla en HTML."""
+    """Lee una imagen local y la convierte en data-URI base64."""
     extension = Path(ruta).suffix.replace(".", "").lower()
     extension = "jpeg" if extension == "jpg" else extension
     with open(ruta, "rb") as archivo:
@@ -274,7 +258,7 @@ def construir_carrusel_html(
     if imagenes_b64:
         slides_html = "".join(
             f'<div class="hero-slide{" active" if i == 0 else ""}" '
-            f"style=\"background-image:url('{img}')\"></div>"
+            f'style="background-image:url(\'{img}\')"></div>'
             for i, img in enumerate(imagenes_b64)
         )
         dots_html = "".join(
@@ -409,7 +393,7 @@ def construir_carrusel_html(
     """
 
 
-# === INYECCIÓN CSS ULTRA-ESTRICTA Y GLOBAL ===
+# === INYECCIÓN CSS GLOBAL ===
 slug_seleccionado = slugify(st.session_state.menu_seleccionado)
 
 st.markdown(
@@ -559,9 +543,6 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
-# Lista de todas las áreas que existen en el portal (se usa como respaldo y
-# como referencia para el usuario admin de pruebas locales).
 TODAS_LAS_AREAS = [
     "Inicio",
     "Capital Humano",
@@ -574,13 +555,7 @@ TODAS_LAS_AREAS = [
 
 
 def obtener_usuarios():
-    """Devuelve el diccionario {usuario: {contrasena, areas}} leído desde
-    st.secrets (nunca escrito en el código). Cada usuario solo ve, en el menú
-    lateral, las áreas listadas en su propio 'areas'.
-
-    Si no hay secrets configurados (ej. pruebas en tu máquina), cae en un
-    usuario 'admin' de respaldo con acceso a todo — reemplázalo en producción
-    configurando [usuarios.xxx] en Streamlit Cloud > Settings > Secrets."""
+    """Devuelve el diccionario {usuario: {contrasena, areas}} desde st.secrets."""
     try:
         return st.secrets["usuarios"]
     except Exception:
@@ -588,12 +563,16 @@ def obtener_usuarios():
 
 
 def verificar_login(usuario, contrasena):
+    # Limpieza automática por si se ingresaron comillas o espacios por error
+    usuario_limpio = usuario.strip().strip('"').strip("'")
+    contrasena_limpia = contrasena.strip()
+
     usuarios = obtener_usuarios()
-    datos_usuario = usuarios.get(usuario)
-    if datos_usuario and contrasena == datos_usuario["contrasena"]:
+    datos_usuario = usuarios.get(usuario_limpio)
+
+    if datos_usuario and contrasena_limpia == datos_usuario["contrasena"]:
         st.session_state.autenticado = True
-        st.session_state.usuario_actual = usuario
-        # "Inicio" siempre visible para todos, aunque no esté listada explícitamente.
+        st.session_state.usuario_actual = usuario_limpio
         areas_usuario = set(datos_usuario.get("areas", []))
         areas_usuario.add("Inicio")
         st.session_state.areas_permitidas = areas_usuario
@@ -603,7 +582,7 @@ def verificar_login(usuario, contrasena):
         st.error("Usuario o contraseña incorrectos")
 
 
-# Vista de Control de Acceso (Login)
+# --- VISTA CONTROL DE ACCESO (LOGIN) ---
 if not st.session_state.autenticado:
     st.title("🔒 Control de Acceso - Portal ESS")
     col1, col2 = st.columns([1, 2])
@@ -613,9 +592,6 @@ if not st.session_state.autenticado:
         if st.button("Ingresar"):
             verificar_login(usuario_ingresado, contrasena_ingresada)
 
-    # --- DIAGNÓSTICO TEMPORAL (quitar cuando ya funcione el login) ---
-    # Nunca muestra contraseñas, solo confirma qué usuarios detecta el
-    # sistema desde st.secrets, para descartar typos o errores de formato.
     with st.expander("🔧 Diagnóstico (temporal)"):
         try:
             usuarios_detectados = list(st.secrets["usuarios"].keys())
@@ -626,7 +602,7 @@ if not st.session_state.autenticado:
                 f"error de formato. Detalle técnico: {e}"
             )
 
-# Vista Principal del Portal (Autenticado)
+# --- VISTA PRINCIPAL (AUTENTICADO) ---
 else:
     st.sidebar.markdown(
         '<span class="menu-titulo-custom">Módulos de Análisis</span>',
@@ -645,13 +621,12 @@ else:
 
     for clave, (icono, etiqueta) in opciones_menu.items():
         if clave not in st.session_state.get("areas_permitidas", {"Inicio"}):
-            continue  # Este usuario no tiene permiso para ver esta área.
+            continue
         slug = slugify(clave)
         if st.sidebar.button(f"{icono}  {etiqueta}", key=f"btn_{slug}"):
             st.session_state.menu_seleccionado = clave
             st.rerun()
 
-    # Barra lateral - Contenedor inferior
     st.sidebar.markdown('<div class="sidebar-bottom-container">', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="sidebar-divider"></div>', unsafe_allow_html=True)
     st.sidebar.markdown('<span class="sidebar-leyenda">Desarrollo De Datos</span>', unsafe_allow_html=True)
@@ -663,7 +638,6 @@ else:
         st.rerun()
     st.sidebar.markdown("</div>", unsafe_allow_html=True)
 
-    # === Área Principal de Contenidos ===
     st.title("Express San Silvestre")
     st.markdown(
         '<p class="subtitulo-portal">Bienvenido al centro de mando de datos de la organización.</p>',
@@ -672,8 +646,6 @@ else:
 
     area = st.session_state.menu_seleccionado
 
-    # Candado de seguridad: si por alguna razón el área guardada en sesión ya
-    # no está permitida para este usuario (ej. cambió de rol), regresa a Inicio.
     if area not in st.session_state.get("areas_permitidas", {"Inicio"}):
         st.session_state.menu_seleccionado = "Inicio"
         area = "Inicio"
@@ -710,7 +682,6 @@ else:
         st.subheader("🧮 Módulo de Liquidaciones")
         mostrar_tablero_powerbi(REPORTES_POWERBI["Liquidaciones"])
 
-        # --- EXTRACCIÓN Y EXPORTACIÓN A EXCEL DESDE LA API DE POWER BI ---
         st.markdown("---")
         st.markdown("### 📥 Extracción de Reporte Consolidado")
         st.write("Genera y descarga el archivo Excel optimizado con los datos actualizados de Power BI (corte 10:00 PM).")
@@ -744,7 +715,6 @@ else:
                 elif medidas == []:
                     st.warning("El modelo no tiene medidas definidas (o la consulta no las alcanzó a ver).")
 
-        # Botón para disparar la API de forma controlada
         if generar:
             with st.spinner("Conectando con la nube de Microsoft y procesando métricas..."):
                 df_liq = obtener_datos_liquidaciones_powerbi()
