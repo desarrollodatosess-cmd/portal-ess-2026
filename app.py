@@ -574,6 +574,11 @@ def verificar_login(usuario, contrasena):
         st.session_state.autenticado = True
         st.session_state.usuario_actual = usuario_limpio
         areas_usuario = set(datos_usuario.get("areas", []))
+        
+        # Si el usuario tiene la área 'Operaciones', también se le asigna 'Capital Humano'
+        if "Operaciones" in areas_usuario:
+            areas_usuario.add("Capital Humano")
+
         areas_usuario.add("Inicio")
         st.session_state.areas_permitidas = areas_usuario
         st.success("¡Acceso concedido!")
