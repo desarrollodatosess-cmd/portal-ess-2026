@@ -237,6 +237,7 @@ REPORTES_POWERBI = {
     "Operaciones": "https://app.powerbi.com/view?r=eyJrIjoiZDZiYjIxMGUtNDlmOS00MGVhLTgwODYtMGE5NGJiNzhmMzE3IiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9&pageName=7c18946f915bd493ad4b",
     "Flotilla": "https://app.powerbi.com/view?r=eyJrIjoiNDUzMDUwNjAtZDRiMy00ZjQwLWI0ZGEtMGM3NTVmNWY1YTZmIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9",
     "Códigos de Falla": "https://app.powerbi.com/view?r=eyJrIjoiOTBhZTcxMjQtMWQwOS00OTE4LTgzNGUtMDgzMWYyOTU3YTgwIiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9",
+    "Dirección": "https://app.powerbi.com/view?r=eyJrIjoiYjQ3MzBkMWYtZmM0Zi00YzUyLWIzMGEtNWVmOTE5NzUxNzA5IiwidCI6IjFmYzUzMTA5LTZhMDAtNGExZi1hNmJjLTdkZGZkNGIzZGRjZiJ9",
 }
 
 
@@ -551,6 +552,7 @@ TODAS_LAS_AREAS = [
     "Operaciones",
     "Flotilla",
     "Códigos de Falla",
+    "Dirección",
 ]
 
 
@@ -574,8 +576,8 @@ def verificar_login(usuario, contrasena):
         st.session_state.autenticado = True
         st.session_state.usuario_actual = usuario_limpio
         areas_usuario = set(datos_usuario.get("areas", []))
-        
-        # Si el usuario tiene la área 'Operaciones', también se le asigna 'Capital Humano'
+
+        # Si el usuario tiene el área 'Operaciones', también se le asigna 'Capital Humano'
         if "Operaciones" in areas_usuario:
             areas_usuario.add("Capital Humano")
 
@@ -627,6 +629,7 @@ else:
         "Operaciones": ("⚙️", "Operaciones"),
         "Flotilla": ("🚛", "Flotilla y Activos"),
         "Códigos de Falla": ("⚠️", "Códigos de Falla"),
+        "Dirección": ("📊", "Dirección"),
     }
 
     for clave, (icono, etiqueta) in opciones_menu.items():
@@ -759,3 +762,7 @@ else:
     elif area == "Códigos de Falla":
         st.subheader("⚠️ Análisis de Códigos de Falla")
         mostrar_tablero_powerbi(REPORTES_POWERBI["Códigos de Falla"])
+
+    elif area == "Dirección":
+        st.subheader("📊 Tablero de Dirección")
+        mostrar_tablero_powerbi(REPORTES_POWERBI["Dirección"])
